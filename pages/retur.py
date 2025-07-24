@@ -34,7 +34,6 @@ with col1:
         sc_tar = st.selectbox("Pilih kolom Indikator Validasi", options=available_targets)
 
     
-
 with col2:
     sap_file = st.file_uploader("Upload SAP Retur File", type=["csv", "xlsx"])
     if sap_file is not None:
