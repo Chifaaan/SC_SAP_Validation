@@ -1,173 +1,169 @@
 import streamlit as st
 import pandas as pd
+import time
 import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
 
+# --- Konfigurasi dan Pengecekan Keamanan ---
 st.set_page_config(
-    page_title="Retur Validation",
-    page_icon=":material/bar_chart_4_bars:",
+    page_title="Upload Data Retur",
+    page_icon="📤",
     layout="wide"
 )
 
-col1, col2 = st.columns(2)
-with col1:
-    sc_file = st.file_uploader("Upload SC Retur File", type=["csv", "xlsx"])
-    if sc_file is not None:
-        if sc_file.name.endswith('.csv'):
-            sc_df = pd.read_csv(sc_file)
+if not st.session_state.get('authenticated', False):
+    st.error("Akses ditolak. Silakan login terlebih dahulu.")
+    time.sleep(1)
+    st.switch_page("pages/login.py")
+    st.stop()
+
+# --- Inisialisasi State ---
+for key in ['sc_df', 'sap_df', 'sc_outlet_col', 'sc_date_col', 'sc_tar_col', 
+            'sap_outlet_col', 'sap_date_col', 'sap_tar_col', 'validation_triggered']:
+    if key not in st.session_state:
+        st.session_state[key] = None if 'df' in key else False
+
+# --- Tampilan Utama Halaman ---
+st.title("Portal Upload & Validasi Data Retur")
+
+with st.sidebar:
+    st.info(f"Login sebagai:\n**{st.session_state.get('name', 'N/A')}**\n({st.session_state.get('role', 'N/A')})")
+    st.divider()
+    if st.button("Logout", use_container_width=True, type="secondary"):
+        auth_keys_to_reset = ['authenticated', 'role', 'name']
+        for key in auth_keys_to_reset:
+            if key in st.session_state:
+                del st.session_state[key]
+        st.switch_page("pages/login.py")
+
+st.header("Langkah 1: Siapkan File Retur")
+
+# Tampilan Dinamis Berbasis Peran (Dua Kolom)
+if st.session_state.get('role') == "Supply Chain":
+    col_input, col_status = st.columns(2)
+    with col_input:
+        st.subheader("Input Data Supply Chain")
+        # (Le code de l'interface utilisateur reste le même)
+        if st.session_state.sc_df is not None:
+            st.success("File SC Retur sudah dikonfirmasi.")
+            if st.button("Ganti File SC", key="replace_sc"):
+                keys_to_reset = ['sc_df', 'sc_outlet_col', 'sc_date_col', 'sc_tar_col', 'validation_triggered', 'validasi']
+                for key in keys_to_reset:
+                    if key in st.session_state: del st.session_state[key]
+                st.rerun()
         else:
-            sc_df = pd.read_excel(sc_file)
-
-        st.write("SC Retur Data:")
-        st.dataframe(sc_df.head())
-
-        st.write("Pilih kolom untuk validasi:")
-        #Select box untuk memilih variabel date dan target
-        available_targets = [col for col in sc_df.columns]
-        sc_outlet = True if 'kode_outlet' in sc_df.columns else None
-        st.write("Ketersediaan kolom kode outlet:", sc_outlet)
-        default_date_index = available_targets.index('tgl_penerimaan') if 'tgl_penerimaan' in available_targets else None
-        sc_date = st.selectbox("Pilih kolom tanggal", options=available_targets, index=default_date_index)
-        sc_tar = st.selectbox("Pilih kolom Indikator Validasi", options=available_targets)
-
-    
-with col2:
-    sap_file = st.file_uploader("Upload SAP Retur File", type=["csv", "xlsx"])
-    if sap_file is not None:
-        if sap_file.name.endswith('.csv'):
-            sap_df = pd.read_csv(sap_file)
+            sc_file = st.file_uploader("Upload file retur dari Supply Chain", type=["csv", "xlsx"], key="sc_uploader")
+            if sc_file:
+                try:
+                    temp_df = pd.read_csv(sc_file) if sc_file.name.endswith('.csv') else pd.read_excel(sc_file)
+                    st.dataframe(temp_df.head())
+                    available_cols = temp_df.columns.tolist()
+                    sc_outlet_selection = 'kode_outlet' if 'kode_outlet' in available_cols else st.selectbox("Pilih kolom outlet SC:", available_cols, key="sc_outlet_manual")
+                    sc_date_selection = 'tgl_penerimaan' if 'tgl_penerimaan' in available_cols else st.selectbox("Pilih kolom tanggal SC:", available_cols, key="sc_date_manual")
+                    sc_tar_selection = 'jml_neto' if 'jml_neto' in available_cols else st.selectbox("Pilih kolom indikator SC:", available_cols, key="sc_tar_manual")
+                    
+                    if st.button("Konfirmasi File & Kolom SC", type="primary"):
+                        st.session_state.sc_df, st.session_state.sc_outlet_col, st.session_state.sc_date_col, st.session_state.sc_tar_col = temp_df, sc_outlet_selection, sc_date_selection, sc_tar_selection
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Gagal membaca file SC: {e}")
+    with col_status:
+        st.subheader("Status Data File SAP")
+        if st.session_state.sap_df is not None:
+            st.success("✅ File SAP sudah dikonfirmasi oleh tim Akuntansi.")
         else:
-            sap_df = pd.read_excel(sap_file)
+            st.info("Status: Menunggu file dari role Akuntansi.")
 
-        st.write("SAP Retur Data:")
-        st.dataframe(sap_df.head())
+elif st.session_state.get('role') == "Akuntansi":
+    col_input, col_status = st.columns(2)
+    with col_input:
+        st.subheader("Input Data SAP")
+        # (Le code de l'interface utilisateur reste le même)
+        if st.session_state.sap_df is not None:
+            st.success("File SAP Retur sudah dikonfirmasi.")
+            if st.button("Ganti File SAP", key="replace_sap"):
+                keys_to_reset = ['sap_df', 'sap_outlet_col', 'sap_date_col', 'sap_tar_col', 'validation_triggered', 'validasi']
+                for key in keys_to_reset:
+                    if key in st.session_state: del st.session_state[key]
+                st.rerun()
+        else:
+            sap_file = st.file_uploader("Upload file retur dari SAP", type=["csv", "xlsx"], key="sap_uploader")
+            if sap_file:
+                try:
+                    temp_sap = pd.read_csv(sap_file) if sap_file.name.endswith('.csv') else pd.read_excel(sap_file)
+                    st.dataframe(temp_sap.head())
+                    available_cols = temp_sap.columns.tolist()
+                    sap_outlet_selection = 'profit_center' if 'profit_center' in available_cols else st.selectbox("Pilih kolom outlet SAP:", available_cols, key="sap_outlet_manual")
+                    sap_date_selection = 'posting_date' if 'posting_date' in available_cols else st.selectbox("Pilih kolom tanggal SAP:", available_cols, key="sap_date_manual")
+                    sap_tar_selection = 'kredit' if 'kredit' in available_cols else st.selectbox("Pilih kolom indikator SAP:", available_cols, key="sap_tar_manual")
+                    
+                    if st.button("Konfirmasi File & Kolom SAP", type="primary"):
+                        st.session_state.sap_df, st.session_state.sap_outlet_col, st.session_state.sap_date_col, st.session_state.sap_tar_col = temp_sap, sap_outlet_selection, sap_date_selection, sap_tar_selection
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Gagal membaca file SAP: {e}")
+    with col_status:
+        st.subheader("Status Data File SC")
+        if st.session_state.sc_df is not None:
+            st.success("✅ File SC sudah dikonfirmasi oleh tim Supply Chain.")
+        else:
+            st.info("Status: Menunggu file dari role Supply Chain.")
 
-        st.write("Pilih kolom untuk validasi:")
-        #Select box untuk memilih variabel date dan target
-        available_targets = [col for col in sap_df.columns]
-        sap_outlet = True if 'profit_center' in sap_df.columns else None
-        st.write("Ketersediaan kolom kode outlet:", sap_outlet)
-        default_date_index = available_targets.index('posting_date') if 'posting_date' in available_targets else None
-        sap_date = st.selectbox("Pilih kolom tanggal", options=available_targets, index=default_date_index)
-        sap_tar = st.selectbox("Pilih kolom Indikator Validasi", options=available_targets)
+# Tombol Proses Validasi
+st.divider()
+st.header("Langkah 2: Jalankan Validasi")
+if st.session_state.sc_df is not None and st.session_state.sap_df is not None:
+    if st.button("🚀 Proses Validasi dan Lihat Dashboard", type="primary", use_container_width=True):
+        with st.spinner("Memproses validasi data... Mohon tunggu."):
+            try:
+                st.session_state.validation_triggered = True
+                sc_df, sap_df = st.session_state.sc_df, st.session_state.sap_df
+                sc_outlet, sc_date, sc_tar = st.session_state.sc_outlet_col, st.session_state.sc_date_col, st.session_state.sc_tar_col
+                sap_outlet, sap_date, sap_tar = st.session_state.sap_outlet_col, st.session_state.sap_date_col, st.session_state.sap_tar_col
 
-if st.button("Proses Validasi dan Lanjut ke Dashboard"):
-    if sc_file is not None and sap_file is not None:
-        try:
-            # Grouping Dataframes
-            sap_df[sap_date] = pd.to_datetime(sap_df[sap_date])
-            sc_df[sc_date] = pd.to_datetime(sc_df[sc_date])
+                sap_df[sap_date] = pd.to_datetime(sap_df[sap_date])
+                sc_df[sc_date] = pd.to_datetime(sc_df[sc_date])
 
-            #Grouping SC
-            sc_grouped = sc_df.groupby(['kode_outlet', sc_date])[sc_tar].sum().reset_index()
-            sc_grouped.columns = ['outlet', 'tanggal', sc_tar]
+                sc_grouped = sc_df.groupby([sc_outlet, sc_date])[sc_tar].sum().reset_index()
+                sap_grouped = sap_df.groupby([sap_outlet, sap_date])[sap_tar].sum().reset_index()
 
-            # Grouping SAP
-            sap_grouped = sap_df.groupby(['profit_center', sap_date])[sap_tar].sum().reset_index()
-            sap_grouped.columns = ['outlet', 'tanggal', sap_tar]
+                # ===== PERBAIKAN BUG DI SINI: Menggunakan .rename() yang lebih aman =====
+                sc_grouped = sc_grouped.rename(columns={sc_outlet: 'outlet', sc_date: 'tanggal', sc_tar: 'nilai_target'})
+                sap_grouped = sap_grouped.rename(columns={sap_outlet: 'outlet', sap_date: 'tanggal', sap_tar: 'nilai_target'})
+                # =======================================================================
+                
+                validasi = pd.merge(sap_grouped, sc_grouped, on=["outlet", "tanggal"], how="outer", suffixes=('_sap', '_sc'))
+                
+                sap_col_name, sc_col_name = 'nilai_target_sap', 'nilai_target_sc'
+                st.session_state['sap_col_suffixed'], st.session_state['sc_col_suffixed'] = sap_col_name, sc_col_name
+                
+                validasi["selisih"] = validasi[sap_col_name].fillna(0) - validasi[sc_col_name].fillna(0)
 
-            # Validasi
-            validasi = pd.merge(sap_grouped, sc_grouped, on=["outlet", "tanggal"], how="outer")
-            validasi["selisih"] = validasi[sap_tar] - validasi[sc_tar]
+                def classify_status(row):
+                    if pd.isna(row[sap_col_name]) or pd.isna(row[sc_col_name]): return "MISSING"
+                    elif abs(row['selisih']) < 1: return "VALID"
+                    else: return "TIDAK VALID"
+                validasi["status"] = validasi.apply(classify_status, axis=1)
+                validasi = validasi[validasi["status"] != "MISSING"]
 
+                def kategori_selisih(x):
+                    if pd.isna(x): return "MISSING"
+                    if abs(x) < 1: return "VALID"
+                    elif 1 <= abs(x) <= 9_999: return "Pembulatan (1–9.999)"
+                    elif abs(x) <= 999_999: return "Sedang (10rb–999rb)"
+                    else: return "Besar (≥1jt)"
+                validasi["kategori_selisih"] = validasi["selisih"].apply(kategori_selisih)
+                st.session_state['validasi'] = validasi
 
-            # Status final dengan 3 kategori
-            def classify_status(x):
-                if pd.isna(x):
-                    return "MISSING"
-                elif abs(x) < 1:
-                    return "VALID"
-                else:
-                    return "TIDAK VALID"
+                valid_count = (validasi['status'] == 'VALID').sum()
+                total_data = len(validasi)
+                st.session_state['valid_percent'] = (valid_count / total_data) * 100 if total_data > 0 else 0
+                
+                time.sleep(1) 
+                st.success("Validasi selesai!")
+                st.switch_page("pages/dashboard.py")
 
-            validasi["status"] = validasi["selisih"].apply(classify_status)
-            
-
-            # Simpan ke session_state
-            st.session_state['sc_tar'] = sc_tar
-            st.session_state['sap_tar'] = sap_tar
-            st.session_state['sc_grouped'] = sc_grouped
-            st.session_state['sap_grouped'] = sap_grouped
-            
-            # Filter kategori selisih
-            def kategori_selisih(x):
-                if pd.isna(x):
-                    return "MISSING"
-                elif x == 0:
-                    return "VALID"
-                elif 1 <= abs(x) <= 9_999:
-                    return "Kecil (1–9.999)"
-                elif abs(x) <= 999_999:
-                    return "Sedang (10rb–999rb)"
-                else:
-                    return "Besar (≥1jt)"
-            validasi["kategori_selisih"] = validasi["selisih"].apply(kategori_selisih)
-            st.session_state['validasi'] = validasi
-
-            # Large Language Model (LLM) Analysis Setup
-            load_dotenv()
-            os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY")
-
-            llm = ChatGoogleGenerativeAI(
-                model="gemini-1.5-flash",
-                temperature=0.1,
-            )
-
-            validasi = st.session_state['validasi']
-
-            summary_stats = {
-                "total_data": len(validasi),
-                "valid": (validasi['status'] == 'VALID').sum(),
-                "tidak_valid": (validasi['status'] == 'TIDAK VALID').sum(),
-                "missing": (validasi['status'] == 'MISSING').sum(),
-                "selisih_terbesar": validasi['selisih'].abs().max(),
-                "tanggal_selisih_maks": validasi.loc[validasi['selisih'].abs().idxmax(), 'tanggal']
-            }
-
-            kategori_selisih_count = validasi['kategori_selisih'].value_counts().to_dict()
-
-            summary_text = f"""
-            Total data: {summary_stats['total_data']}
-            VALID: {summary_stats['valid']}
-            TIDAK VALID: {summary_stats['tidak_valid']}
-            MISSING: {summary_stats['missing']}
-            Selisih terbesar: {summary_stats['selisih_terbesar']}
-
-            Distribusi Selisih:
-            {kategori_selisih_count}
-
-            Tanggal selisih terbesar: {summary_stats['tanggal_selisih_maks']}
-            """
-
-            prompt_template = PromptTemplate.from_template(
-                "Buatkan analisis data validasi retur dari data berikut:\n\n{summary}\n\n"
-                "Analisis harus mencakup insight, anomali, dan saran untuk perbaikan data.\n"
-                "Anggaplah bahwa data yang terjadi pembulatan oleh sistem adalah valid.\n"
-                "Berikan penjelasan alasan alasan yang mungkin terjadi pada distribusi selisih.\n"
-                "Distribusi selisih data kecil kemungkinan disebabkan oleh pembulatan oleh sistem, tolong sertakan keterangan ini dalam analisis."
-            )
-
-            chain = LLMChain(llm=llm, prompt=prompt_template)
-            result = chain.run(summary=summary_text)
-
-            # Simpan ke session_state agar bisa diakses dari halaman lain
-            st.session_state['llm_analysis'] = result
-
-            #Validation Percetange count
-            total = summary_stats["total_data"]
-            valid = summary_stats["valid"]
-            valid_percent = (valid / total) * 100 if total > 0 else 0
-            st.session_state['valid_percent'] = valid_percent
-
-            # Case kalau data valid
-            st.success("Data berhasil diproses. Menuju halaman dashboard...")
-            st.switch_page("pages/dashboard.py")
-
-        except Exception as e:
-            st.error(f"Terjadi kesalahan saat memproses: {e}")
-    else:
-        st.warning("Silakan upload kedua file sebelum melanjutkan.")
-
+            except Exception as e:
+                st.error(f"Terjadi kesalahan saat memproses data: {e}. Pastikan kolom yang dipilih pada langkah 1 sudah benar.")
+                st.session_state.validation_triggered = False # Reset trigger agar tombol bisa ditekan lagi
+else:
+    st.warning("Harap pastikan kedua file (SC dan SAP) sudah dikonfirmasi untuk dapat melanjutkan proses validasi.")

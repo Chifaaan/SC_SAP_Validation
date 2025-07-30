@@ -3,7 +3,6 @@ import csv
 import mysql.connector
 from config import DB_CONFIG
 
-
 # Connect to MySQL
 conn = mysql.connector.connect(**DB_CONFIG)
 
