@@ -4,7 +4,7 @@ pages = {
     "Main Menus":
     [
         st.Page("pages/login.py"),
-        st.Page("pages/home.py", title="Home", icon=":material/home:")
+        st.Page("pages/home.py", title="Home", icon=":material/home:"),
     ],
 
     "Validation":

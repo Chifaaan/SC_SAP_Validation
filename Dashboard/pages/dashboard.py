@@ -1,147 +1,189 @@
 import streamlit as st
-import plotly.express as px
 import pandas as pd
+import plotly.express as px
 
-st.set_page_config(page_title="Dashboard Validasi", layout="wide", page_icon="📊")
-st.title("📊 Dashboard Validasi Retur")
+st.set_page_config(page_title="Validation Dashboard", layout="wide")
+
+# --- Authentication and Session State Check ---
+if not st.session_state.get('logged_in'):
+    st.error("Access denied. Please log in first.")
+    st.switch_page("pages/login.py")
+    st.stop()
+
+if 'result_df' not in st.session_state:
+    st.warning("No data found. Please upload and process a file on the 'retur' page first.")
+    st.page_link("pages/retur.py", label="Go to Validation Page", icon="📄")
+    st.stop()
+
+# --- Load Data From Session ---
+# 'df' is the original, complete dataset. It will be used for global insights.
+if st.session_state['sc_df'] is not None:
+    sc_df = st.session_state['sc_df']
+else:
+    sc_df = None
+if st.session_state['sap_df'] is not None:
+    sap_df = st.session_state['sap_df']
+else:
+    sap_df = None
+
+val_df = st.session_state['val_df']
+df = st.session_state['result_df']
+df['date'] = pd.to_datetime(df['date'])
+role = st.session_state.get('role')
+
+
+st.title("📊 Validation Dashboard")
 
 with st.sidebar:
-    st.info(f"Login sebagai:\n**{st.session_state.get('name', 'N/A')}**\n({st.session_state.get('role', 'N/A')})")
-    st.divider()
-    st.header("Navigasi")
-    st.page_link("pages/retur.py", label="Retur", icon="📚")
-    st.divider()
-    if st.button("Logout", use_container_width=True, type="secondary"):
-        auth_keys_to_reset = ['authenticated', 'role', 'name']
-        for key in auth_keys_to_reset:
-            if key in st.session_state:
-                del st.session_state[key]
+    st.info(f"Welcome, **{role}**!")
+    st.page_link("pages/retur.py", label="Go to Validation Page", icon="📄")
+    st.header("Controls")
+    if st.button("Logout"):
+        for key in st.session_state.keys():
+            del st.session_state[key]
+        st.session_state.logged_in = False
         st.switch_page("pages/login.py")
+        st.stop()
 
+# --- Create Tabs ---
+tab1, tab2 = st.tabs(["Validation Results", "Dashboard Insights"])
 
-# Gatekeeper: Periksa apakah semua data yang diperlukan ada
-if 'validasi' in st.session_state and 'sap_col_suffixed' in st.session_state:
-    # --- 1. PENGATURAN DAN PENGAMBILAN DATA ---
-    validasi = st.session_state['validasi'].copy()
-    sap_col = st.session_state['sap_col_suffixed']
-    sc_col = st.session_state['sc_col_suffixed']
+# --- Tab 1: Filterable Results Table ---
+with tab1:
+    st.header("Validation Results")
+
+    discrepancy_in_view = (df['status'] == 'Discrepancy').sum()
+    st.warning(f"**{discrepancy_in_view}** discrepancies found in total {len(df)} records.")
+
+    st.divider()
+    st.write("Use the filters below to narrow down the results. Leave a filter empty to ignore it.")
+    filter_cols = st.columns([2, 2, 2, 2, 2])
     
-    # --- 2. METRIK UTAMA DAN INDIKATOR ---
-    valid_percent = st.session_state.get('valid_percent', 0)
-    if valid_percent >= 95:
-        st.success(f"Validasi data sangat baik ✅ ({valid_percent:.2f}% VALID)")
-    elif valid_percent >= 80:
-        st.warning(f"Validasi data cukup baik ⚠️ ({valid_percent:.2f}% VALID)")
+    with filter_cols[0]:
+        status_options = ['Matched', 'Discrepancy']
+        selected_status = st.multiselect("Status", options=status_options, default=[])
+
+    with filter_cols[1]:
+        outlet_options = sorted(df['outlet_code'].unique())
+        selected_outlets = st.multiselect("Outlet Code", options=outlet_options, default=[])
+
+    with filter_cols[2]:
+        id_col = 'transaction_code' if 'transaction_code' in df.columns else 'document_id'
+        search_id = st.text_input(f"Search by {id_col.replace('_', ' ').title()}")
+
+    with filter_cols[3]:
+        min_date = df['date'].min().date()
+        max_date = df['date'].max().date()
+        selected_date_range = st.date_input("Date Range", value=(), min_value=min_date, max_value=max_date)
+
+    with filter_cols[4]:
+        dis_cat= ['Valid', 'Rounding (< 2k)', 'Small (2k-10k)', 'Medium (10k-100k)', 'Big (> 100k)']
+        selected_discrepancy = st.multiselect("Discrepancy Category", options=dis_cat, default=[])
+
+    # 'filtered_df' is used ONLY for this tab's display
+    filtered_df = df.copy()
+    if selected_status:
+        filtered_df = filtered_df[filtered_df['status'].isin(selected_status)]
+    if selected_outlets:
+        filtered_df = filtered_df[filtered_df['outlet_code'].isin(selected_outlets)]
+    if search_id:
+        filtered_df = filtered_df[filtered_df[id_col].astype(str).str.contains(search_id, case=False, na=False)]
+    if len(selected_date_range) == 2:
+        start_date, end_date = pd.to_datetime(selected_date_range[0]), pd.to_datetime(selected_date_range[1])
+        filtered_df = filtered_df[(filtered_df['date'] >= start_date) & (filtered_df['date'] <= end_date)]
+
+    
+    # --- MODIFICATION START ---
+    # 1. Create the Discrepancy Category column for the filtered view
+    bins = [0, 2001, 10001, 100001, float('inf')]
+    labels = ["Rounding (< 2k)", "Small (2k-10k)", "Medium (10k-100k)", "Big (> 100k)"]
+    
+    # Use pd.cut and fill non-discrepancy rows with 'Valid'
+    discrepancy_mask = filtered_df['status'] == 'Discrepancy'
+    filtered_df['Discrepancy_category'] = pd.cut(
+        abs(filtered_df.loc[discrepancy_mask, 'difference']),
+        bins=bins,
+        labels=labels,
+        right=False
+    )
+    # Use .cat.add_categories to allow 'Valid' before filling
+    if pd.api.types.is_categorical_dtype(filtered_df['Discrepancy_category']):
+        filtered_df['Discrepancy_category'] = filtered_df['Discrepancy_category'].cat.add_categories('Valid').fillna('Valid')
     else:
-        st.error(f"Validasi data perlu perhatian ❌ ({valid_percent:.2f}% VALID)")
+        filtered_df['Discrepancy_category'] = filtered_df['Discrepancy_category'].fillna('Valid')
+
+    if selected_discrepancy:
+        filtered_df = filtered_df[filtered_df['Discrepancy_category'].isin(selected_discrepancy)]
+
+    # 2. Define the exact column order for display
+    display_order = [
+        id_col,
+        'outlet_code',
+        'date',
+        'validation_total',
+        'target_col_value',
+        'difference',
+        'status',
+        'Discrepancy_category'
+    ]
+
+    # 3. Display the dataframe with the specified columns in order
+    st.dataframe(filtered_df[display_order], use_container_width=True)
+    # --- MODIFICATION END ---
 
 
-    # --- TABS SECTION ---
-    tab1, tab2 = st.tabs(["🧾 Tabel Detail Validasi", "📈 Metrik & Visualisasi"])
+# --- Tab 2: Dashboard Insights ---
+with tab2:
+    st.header("Global Dashboard Insights")
 
-    with tab1:
-        st.subheader("Detail Data Validasi")
+    total_count = len(df)
+    matched_count = len(df[df['status'] == 'Matched'])
+    discrepancy_count = len(df[df['status'] == 'Discrepancy'])
+    validation_pct = (matched_count / total_count * 100) if total_count > 0 else 0
 
-        colf1, colf2, colf3 = st.columns(3)
+    # Key Metrics
+    discrepancy_df = df[df['status'] == 'Discrepancy'].copy()
+    top_outlet = discrepancy_df['outlet_code'].value_counts().idxmax()
+    top_outlet_count = discrepancy_df['outlet_code'].value_counts().max()
 
-        # Filter tanggal
-        with colf2:
-            date_range = st.date_input(
-                "Pilih Rentang Tanggal",
-                value=[],
-                min_value=validasi['tanggal'].min().date(),
-                max_value=validasi['tanggal'].max().date()
-            )
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Overall Validation Success", f"{validation_pct:.2f}%", border=True, width=225)
+        st.metric("Total Matched Records", f"{matched_count}", border=True, width=225)
+        st.metric("Total Discrepancy Records", f"{discrepancy_count}", border=True, width=225)   
+        st.metric("Highest Discrepancy Outlet", f"{top_outlet}", delta=f"{top_outlet_count} records", border=True, delta_color="off", width=225)
+            
+    
+    st.divider()
 
-        # Filter kategori selisih
-        with colf3:
-            kategori_selected = st.multiselect(
-                "Pilih Kategori Validasi",
-                options=validasi['kategori_selisih'].unique(),
-                default=[]
-            )
+    discrepancy_df = df[df['status'] == 'Discrepancy'].copy()
 
-        with colf1:
-            outlet_selected = st.multiselect(
-                "Pilih Outlet",
-                options=validasi['outlet'].unique(),
-                default=[]
-            )
+    if discrepancy_df.empty:
+        st.success("🎉 No discrepancies found in the entire dataset!")
+    else:
+        ("No outlets with discrepancies.")
 
-        # Apply filtering
-        filtered_validasi = validasi.copy()
-        if date_range and len(date_range) == 2:
-            start_date, end_date = date_range
-            filtered_validasi = filtered_validasi[
-                (filtered_validasi['tanggal'].dt.date >= start_date) &
-                (filtered_validasi['tanggal'].dt.date <= end_date)
-            ]
-
-        if kategori_selected:
-            filtered_validasi = filtered_validasi[filtered_validasi['kategori_selisih'].isin(kategori_selected)]
-
-        if outlet_selected:
-            filtered_validasi = filtered_validasi[filtered_validasi['outlet'].isin(outlet_selected)]
-
-        koloms = ['outlet', 'tanggal', sap_col, sc_col, 'selisih', 'status', 'kategori_selisih']
-        st.dataframe(filtered_validasi[koloms])
-
-
-    with tab2:
-        col1, col2 = st.columns([1, 3])
-
-        with col2:
-            summary_df = filtered_validasi.groupby('tanggal')[[sap_col, sc_col]].sum().reset_index()
-            line_plot = px.line(
-                summary_df,
-                x='tanggal',
-                y=[sap_col, sc_col],
-                labels={'value': 'Total Nilai', 'variable': 'Sumber Data'},
-                title='Perbandingan Total Nilai Retur per Tanggal'
-            )
-            new_names = {sap_col: 'SAP', sc_col: 'Supply Chain'}
-            line_plot.for_each_trace(lambda t: t.update(name=new_names[t.name]))
-            st.plotly_chart(line_plot, use_container_width=True)
-
-        with col1:
-            total_rows = len(filtered_validasi)
-            valid_count = (filtered_validasi['status'] == 'VALID').sum()
-            mismatch_count = (filtered_validasi['status'].isin(['TIDAK VALID', 'MISSING'])).sum()
-
-            st.container(border=True).metric("Total Baris Data", total_rows)
-            st.container(border=True).metric("Jumlah Data VALID", valid_count, help="Data yang cocok atau hanya selisih pembulatan.")
-            st.container(border=True).metric("Jumlah Data TIDAK COCOK", mismatch_count, help="Data yang tidak valid atau hilang di salah satu sistem.")
-
-        colr1, colr2 = st.columns(2)
-
-        with colr1:
-            distribusi_selisih = filtered_validasi['kategori_selisih'].value_counts().reset_index()
-            distribusi_selisih.columns = ['kategori_selisih', 'count']
-            kategori_order = ['VALID', 'Pembulatan (1–9.999)', 'Sedang (10rb–999rb)', 'Besar (≥1jt)', 'MISSING']
-            distribusi_selisih['kategori_selisih'] = pd.Categorical(distribusi_selisih['kategori_selisih'], categories=kategori_order, ordered=True)
-
-            bar_chart = px.bar(
-                distribusi_selisih.sort_values('kategori_selisih'),
-                x='kategori_selisih', y='count', color='kategori_selisih', text_auto=True,
-                title='Distribusi Status dan Ukuran Selisih',
-                labels={'kategori_selisih': 'Kategori Selisih', 'count': 'Jumlah'},
-                color_discrete_map={
-                    'VALID': '#636EFA', 'Pembulatan (1–9.999)': '#ABECD6',
-                    'Sedang (10rb–999rb)': '#EFB261', 'Besar (≥1jt)': '#E45757', 'MISSING': '#B0B0B0'
-                }
-            )
-            st.plotly_chart(bar_chart, use_container_width=True)
-
-        with colr2:
-            status_counts = filtered_validasi['status'].value_counts().reset_index()
-            status_counts.columns = ['status', 'count']
-            pie_chart = px.pie(
-                status_counts, names='status', values='count', title='Distribusi Status Validasi Final',
-                color='status', color_discrete_map={'VALID': '#2CA02C', 'TIDAK VALID': '#D62728', 'MISSING': 'grey'}
-            )
-            st.plotly_chart(pie_chart, use_container_width=True)
-
-else:
-    st.warning("Data validasi belum tersedia. Silakan unggah dan proses file terlebih dahulu.")
-    st.switch_page("pages/retur.py")
+    with col2:
+        # Re-using the same bins and labels for consistency
+        bins = [0, 2001, 10001, 100001, float('inf')]
+        labels = ["Rounding (< 2k)", "Small (2k-10k)", "Medium (10k-100k)", "Big (> 100k)"]
+        discrepancy_df['category'] = pd.cut(
+            abs(discrepancy_df['difference']),
+            bins=bins,
+            labels=labels,
+            right=False
+        )
+        st.subheader("Discrepancy Categories")
+        category_counts = discrepancy_df['category'].value_counts().reset_index()
+        category_counts.columns = ['category', 'count']
+        
+        fig = px.pie(
+            category_counts,
+            names='category',
+            values='count',
+            title='Distribution of Discrepancy Types (Overall)',
+            color_discrete_sequence=px.colors.sequential.RdBu
+        )
+        fig.update_layout(legend_title_text='Categories')
+        st.plotly_chart(fig, use_container_width=True)
 

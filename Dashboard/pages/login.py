@@ -1,65 +1,73 @@
-# login.py
-
 import streamlit as st
-import time
+import requests
+from streamlit.errors import StreamlitAPIException
 
-# Atur konfigurasi halaman sebagai perintah pertama
-st.set_page_config(
-    page_title="Login - Validasi Retur",
-    page_icon="🔒",
-    layout="centered"
-)
-
-def check_login(username, password):
-    """Fungsi untuk memeriksa kredensial login."""
-    # Kredensial di-embed langsung di dalam kode
-    # PENTING: Untuk aplikasi produksi, gunakan metode yang lebih aman seperti
-    # database atau st.secrets untuk menyimpan kredensial.
-    VALID_CREDENTIALS = {
-        "sc_user": {
-            "password": "user123",
-            "role": "Supply Chain",
-            "name": "user_sc"
-        },
-        "acc_user": {
-            "password": "user123",
-            "role": "Akuntansi",
-            "name": "user_acc"
-        }
+def login_user(username, password):
+    """
+    Sends credentials to the n8n backend API and returns the response.
+    """
+    # IMPORTANT: Replace this with your actual n8n webhook URL
+    api_url = "http://localhost:5678/webhook/login"
+    
+    payload = {
+        "username": username,
+        "password": password
     }
     
-    user_data = VALID_CREDENTIALS.get(username)
-    if user_data and user_data["password"] == password:
-        return True, user_data["role"], user_data["name"]
-    return False, None, None
+    try:
+        response = requests.post(api_url, json=payload, timeout=10)
+        response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        st.error(f"Failed to connect to the login service: {e}")
+        return None
 
-# Inisialisasi session state jika belum ada
-if 'authenticated' not in st.session_state:
-    st.session_state['authenticated'] = False
-if 'role' not in st.session_state:
-    st.session_state['role'] = None
-if 'name' not in st.session_state:
-    st.session_state['name'] = None
+# --- Streamlit Page Configuration ---
+st.set_page_config(page_title="Company Portal Login", layout="centered")
 
-# Tampilkan form login jika pengguna belum terotentikasi
+# --- Initialize Session State ---
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.role = None
 
-st.title("Login Aplikasi Validasi Retur")
-st.write("Silakan masukkan kredensial Anda.")
+# --- Main Login Logic ---
+st.title("Company Portal Login")
+st.write("Please enter your credentials to access the portal.")
 
-username = st.text_input("Username", key="login_username")
-password = st.text_input("Password", type="password", key="login_password")
+# If user is already logged in, show a message and a link to the main app
+if st.session_state.logged_in:
+    st.success(f"You are already logged in as **{st.session_state.role}**.")
+    st.page_link("pages/retur.py", label="Go to App", icon="🚀")
+    st.stop()
 
-if st.button("Login", key="login_button"):
-    is_valid, role, name = check_login(username, password)
-    if is_valid:
-        # Jika login berhasil, simpan status dan data pengguna di session state
-        st.session_state['authenticated'] = True
-        st.session_state['role'] = role
-        st.session_state['name'] = name
-        
-        # Tampilkan pesan sukses dan alihkan halaman
-        st.success(f"Login berhasil! Selamat datang, {name}.")
-        time.sleep(1) # Beri jeda sejenak agar pengguna bisa membaca pesan
-        st.switch_page("pages/retur.py")
+# --- Login Form ---
+with st.form("login_form"):
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    submitted = st.form_submit_button("Login")
+
+if submitted:
+    if not username or not password:
+        st.warning("Please enter both username and password.")
     else:
-        st.error("Username atau password salah. Silakan coba lagi.")
+        with st.spinner("Authenticating..."):
+            api_response = login_user(username, password)
+            
+            if api_response:
+                message = api_response.get("message")
+                role = api_response.get("role")
+                
+                if message == "Login Success" and role:
+                    # On successful login, save state and switch page
+                    st.session_state.logged_in = True
+                    st.session_state.role = role
+                    st.success("Login successful! Redirecting...")
+                    try:
+                        st.switch_page("pages/retur.py")
+                    except StreamlitAPIException:
+                         # Handle cases where st.switch_page might not be available in older versions
+                         st.info("Please navigate to the 'retur' page from the sidebar.")
+
+                else:
+                    # Show error message from API if login fails
+                    st.error(message or "Invalid username or password.")
