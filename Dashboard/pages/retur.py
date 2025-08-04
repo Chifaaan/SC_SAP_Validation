@@ -77,8 +77,7 @@ elif st.session_state.get('role') == "Akuntansi":
     col_input, col_status = st.columns(2)
     with col_input:
         st.subheader("Input Data SAP")
-
-
+        # (Le code de l'interface utilisateur reste le même)
         if st.session_state.sap_df is not None:
             st.success("File SAP Retur sudah dikonfirmasi.")
             if st.button("Ganti File SAP", key="replace_sap"):
