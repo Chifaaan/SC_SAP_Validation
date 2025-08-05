@@ -14,10 +14,10 @@ def map_columns(df, required_cols_map, file_type):
     original_cols, required_keys = set(df.columns), set(required_cols_map.keys())
     missing_keys = required_keys - original_cols
     if len(missing_keys) == len(required_keys):
-        st.error(f"Error: The Column doesn't match. Please ensure it's the right document.", icon="🚨")
+        st.error(f"Error: Kolom dalam dokumen anda tidak sesuai! Pastikan dokumen yang anda kirim sesuai dengan role Anda!", icon="🚨")
         return None
     if not missing_keys: return df
-    st.write("---"); st.subheader(f"2. Map Columns for {file_type} File")
+    st.write("---"); st.subheader(f"Map Columns for {file_type} File")
     mappings, all_mapped = {}, True
     for key in required_keys:
         if key in original_cols: mappings[key] = key
@@ -33,14 +33,20 @@ def map_columns(df, required_cols_map, file_type):
 # --- Page Configuration and Authentication ---
 st.set_page_config(page_title="Document Validation", layout="wide")
 if not st.session_state.get('logged_in'):
-    st.error("Access denied. Please log in first."); st.page_link("Login.py", label="Go to Login Page", icon="🔒"); st.stop()
+    st.switch_page("pages/login.py")
+    st.stop()
 role = st.session_state.get('role')
-st.title(f"📄 Document Validation Portal"); st.markdown(f"Welcome, **{role}**!")
+user = st.session_state.get('user')
+st.title(f"📄 Document Validation Portal")
+st.markdown(f"Welcome, **{user}**!")
+st.markdown(f"Anda terdaftar sebagai **{role}**")
+
 with st.sidebar:
     st.header("Controls")
     if st.button("Logout"):
         for key in list(st.session_state.keys()): del st.session_state[key]
-        st.page_link("pages/login.py", label="Logged out", icon="🔒"); st.stop()
+        st.switch_page("pages/login.py")
+        st.stop()
 
 # --- Load Validation File ---
 try:
@@ -50,7 +56,7 @@ except FileNotFoundError:
     st.error("Validation file not found: `im_purchases_and_return.csv` must be in the root directory."); st.stop()
 
 # --- File Upload Section ---
-st.header("1. Upload Your Document")
+st.header("Upload Your Document")
 data_file = None
 if role == "Supply Chain": data_file = st.file_uploader("Upload your Supply Chain (SC) file", type=['csv', 'xlsx'])
 elif role == "Accountant": data_file = st.file_uploader("Upload your Accountant (SAP) file", type=['csv', 'xlsx'])

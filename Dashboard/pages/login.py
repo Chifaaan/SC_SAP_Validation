@@ -56,11 +56,13 @@ if submitted:
             if api_response:
                 message = api_response.get("message")
                 role = api_response.get("role")
+                user = api_response.get("user")
                 
                 if message == "Login Success" and role:
                     # On successful login, save state and switch page
                     st.session_state.logged_in = True
                     st.session_state.role = role
+                    st.session_state.user = user
                     st.success("Login successful! Redirecting...")
                     try:
                         st.switch_page("pages/retur.py")
