@@ -23,7 +23,7 @@ def login_user(username, password):
         return None
 
 # --- Streamlit Page Configuration ---
-st.set_page_config(page_title="Company Portal Login", layout="centered")
+st.set_page_config(page_title="KFA Portal Login", layout="centered")
 
 # --- Initialize Session State ---
 if 'logged_in' not in st.session_state:
