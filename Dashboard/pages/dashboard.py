@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import numpy as np
+from streamlit_extras.dataframe_explorer import dataframe_explorer
 
 st.set_page_config(page_title="Validation Dashboard", layout="wide")
 
@@ -43,7 +43,7 @@ with st.sidebar:
     if st.button("Logout", use_container_width=True, type="primary"):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
-        st.page_link("pages/login.py", label="Logged out. Go to Login.", icon="🔒")
+        st.switch_page("pages/login.py")
         st.stop()
 
 
@@ -51,12 +51,8 @@ with st.sidebar:
 tab1, tab2 = st.tabs(["Validation Results", "Dashboard Insights"])
 
 # --- Tab 1: Filterable Results Table ---
-with tab1:
+with tab2:
     st.header("Validation Results (Based on 'DPP')")
-    discrepancy_total = (df['status'] == 'Discrepancy').sum()
-    st.info(f"**{discrepancy_total}** data yang tidak sesuai dari **{len(df)}** data berdasarkan perhitungan kolom 'dpp'.")
-    
-    st.divider()
     filter_cols = st.columns(4)
     
     with filter_cols[0]:
@@ -93,6 +89,9 @@ with tab1:
     if selected_discrepancy:
         filtered_df = filtered_df[filtered_df['Discrepancy_category'].isin(selected_discrepancy)]
 
+    discrepancy_total = (df['status'] == 'Discrepancy').sum()
+    st.info(f"**{discrepancy_total}** data yang tidak sesuai dari **{len(df)}** data berdasarkan perhitungan kolom 'dpp'.")
+
     # Define and display the main results table
     id_col = 'transaction_code' if role == 'Supply Chain' else 'document_id'
     display_order = [id_col, 'outlet_code', 'date', 'target_col_value', 'validation_total', 'difference', 'status', 'Discrepancy_category']
@@ -106,38 +105,90 @@ with tab1:
     # --- MODIFICATION: Discrepancy Analysis Table (Recalculated) ---
     st.divider()
     st.header("Discrepancy Analysis (Recalculated with 'Total')")
-    
-    # Check if 'total' column exists in val_df to perform this analysis
+
     if 'total' in val_df.columns:
         discrepancy_records = filtered_df[filtered_df['status'] == 'Discrepancy'].copy()
-        
+
         if not discrepancy_records.empty:
-            
+
             # Aggregate the 'total' column from the raw validation file
             if role == 'Supply Chain':
                 val_total_agg = val_df.groupby('no_transaksi')['total'].sum().reset_index()
-                # Merge to get the new total
                 recalc_df = pd.merge(discrepancy_records, val_total_agg, left_on='transaction_code', right_on='no_transaksi', how='left')
-            else: # Accountant role
+            else:  # Accountant role
                 val_total_agg = val_df.groupby('document_id')['total'].sum().reset_index()
-                # Merge to get the new total
                 recalc_df = pd.merge(discrepancy_records, val_total_agg, on='document_id', how='left')
 
-            # Calculate the new difference
-            recalc_df['new_difference'] = (recalc_df['target_col_value'] - recalc_df['total'].fillna(0)).abs()
-            
-            # Define columns for the new table and display it
-            recalc_display_order = [id_col, 'outlet_code','date', 'target_col_value', 'total', 'new_difference', 'status']
-            recalc_df['status'] = recalc_df['new_difference'].apply(lambda x: 'Discrepancy' if x >= 10 else 'Matched')
-            recalc_status = recalc_df['status']
-            total_discre = (recalc_status == 'Discrepancy').sum()
-            
+            # Calculate absolute difference
+            recalc_df['recalculated_difference'] = (recalc_df['target_col_value'] - recalc_df['total'].fillna(0)).abs()
+
+            # Set status based on recalculated difference
+            recalc_df['status'] = recalc_df['recalculated_difference'].apply(lambda x: 'Discrepancy' if x >= 10 else 'Matched')
+
+            # Define display columns
+            id_col = 'transaction_code' if role == 'Supply Chain' else 'document_id'
+            recalc_display_order = [id_col, 'outlet_code', 'date', 'target_col_value', 'total', 'recalculated_difference', 'status']
+
+            # --- FILTERS ---
+            filter_cols = st.columns(4)
+
+            with filter_cols[0]:
+                selected_status = st.multiselect("Status", options=['Matched', 'Discrepancy'], default=[], key="recalc_status_filter")
+
+            with filter_cols[1]:
+                selected_outlets = st.multiselect("Outlet Code", options=sorted(recalc_df['outlet_code'].unique()), default=[], key="recalc_outlet_filter")
+
+            with filter_cols[2]:
+                min_date, max_date = recalc_df['date'].min().date(), recalc_df['date'].max().date()
+                selected_date_range = st.date_input("Date Range", value=(), min_value=min_date, max_value=max_date, key="recalc_date_filter")
+
+            # Discrepancy Category based on recalculated_difference
+            bins = [0, 2001, 10001, 100001, float('inf')]
+            labels = ["Rounding (< 2k)", "Small (2k-10k)", "Medium (10k-100k)", "Big (> 100k)"]
+            # Hitung Discrepancy_category
+            recalc_df['Discrepancy_category'] = pd.cut(
+                recalc_df['recalculated_difference'],
+                bins=bins,
+                labels=labels,
+                right=False
+            )
+
+            # Tambahkan kategori 'Missing'
+            if pd.api.types.is_categorical_dtype(recalc_df['Discrepancy_category']):
+                recalc_df['Discrepancy_category'] = recalc_df['Discrepancy_category'].cat.add_categories(['Missing'])
+            else:
+                recalc_df['Discrepancy_category'] = recalc_df['Discrepancy_category']
+
+            # Tandai baris yang memiliki NaN di salah satu kolom sebagai 'Missing'
+            recalc_df.loc[recalc_df.isnull().any(axis=1), 'Discrepancy_category'] = 'Missing'
+
+            with filter_cols[3]:
+                selected_discrepancy = st.multiselect("Discrepancy Category", options=sorted(recalc_df['Discrepancy_category'].unique()), default=[])
+
+            # Apply filters
+            filtered_recalc_df = recalc_df.copy()
+            if selected_status:
+                filtered_recalc_df = filtered_recalc_df[filtered_recalc_df['status'].isin(selected_status)]
+            if selected_outlets:
+                filtered_recalc_df = filtered_recalc_df[filtered_recalc_df['outlet_code'].isin(selected_outlets)]
+            if len(selected_date_range) == 2:
+                start_date, end_date = pd.to_datetime(selected_date_range[0]), pd.to_datetime(selected_date_range[1])
+                filtered_recalc_df = filtered_recalc_df[(filtered_recalc_df['date'] >= start_date) & (filtered_recalc_df['date'] <= end_date)]
+            if selected_discrepancy:
+                filtered_recalc_df = filtered_recalc_df[filtered_recalc_df['Discrepancy_category'].isin(selected_discrepancy)]
+
+            # Display filtered table
+            total_discre = (filtered_recalc_df['status'] == 'Discrepancy').sum()
             st.info(f"**{total_discre}** data tidak sesuai setelah menghitung ulang dengan kolom 'Total'.")
-            st.dataframe(recalc_df[recalc_display_order].rename(columns={'total': 'validation_raw_total', 'new_difference': 'recalculated_difference'}), use_container_width=True, column_config={
+
+            st.dataframe(filtered_recalc_df[recalc_display_order + ['Discrepancy_category']].rename(columns={
+                'total': 'validation_raw_total'
+            }), use_container_width=True, column_config={
                 'target_col_value': st.column_config.NumberColumn(format="localized"),
                 'validation_raw_total': st.column_config.NumberColumn(format="localized"),
                 'recalculated_difference': st.column_config.NumberColumn(format="localized"),
             })
+
         else:
             st.success("No discrepancies in the current filtered view to analyze.")
     else:
@@ -187,26 +238,60 @@ with tab1:
                 st.dataframe(val_drill)
 
 # --- Tab 2: Dashboard Insights ---
-with tab2:
+with tab1:
     # This tab remains unchanged and provides global insights
-    st.header("Global Dashboard Insights")
+    st.header("File Validation")
     total_count = len(df)
     matched_count = total_count - total_discre
     validation_pct = (matched_count / total_count * 100) if total_count > 0 else 0
     discrepancy_insights_df = recalc_df[recalc_df['status'] == 'Discrepancy'].copy()
     
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Overall Validation Success", f"{validation_pct:.2f}%", border=True, height=125)
-    with col2:
-        st.metric("Total Matched Records", f"{matched_count}", border=True, height=125)
-    with col3:
-        st.metric("Total Discrepancy Records", f"{total_discre}", border=True, height=125)
-    with col4:
-        if not discrepancy_insights_df.empty:
-            top_outlet = discrepancy_insights_df['outlet_code'].value_counts().idxmax()
-            top_outlet_count = discrepancy_insights_df['outlet_code'].value_counts().max()
-            st.metric("Highest Discrepancy Outlet", f"{top_outlet}", delta=f"{top_outlet_count} records", delta_color="off", border=True, height=125)
+    bigc1, bigc2 = st.columns(2)
+    with bigc1:
+        if discrepancy_insights_df.empty:
+            st.markdown(
+                """
+                <div style="background-color:#d4edda; color:#155724; padding:20px; border-radius:10px; height:230px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                    <div style="width:80px; height:80px; border-radius:50%; background-color:#28a745; display:flex; align-items:center; justify-content:center; font-size:40px; color:white;">
+                        ✅
+                    </div>
+                    <div style="margin-top:15px; font-size:20px; font-weight:bold; text-align:center;">
+                        Data Valid<br>Tidak ada discrepancy ditemukan!
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown(
+                """
+                <div style="background-color:#f8d7da; color:#721c24; padding:20px; border-radius:10px; height:230px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                    <div style="width:80px; height:80px; border-radius:50%; background-color:#dc3545; display:flex; align-items:center; justify-content:center; font-size:40px; color:white;">
+                        ❌
+                    </div>
+                    <div style="margin-top:15px; font-size:20px; font-weight:bold; text-align:center;">
+                        Data Invalid<br>Ditemukan perbedaan dalam data!
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+    with bigc2:
+        smc1, smc2 = st.columns(2)
+        with smc1:
+            st.metric("Overall Validation Score", f"{validation_pct:.2f}%", border=True)
+            st.metric("Total Records Processed", f"{total_count}", border=True)
+        with smc2:
+            st.metric("Total Matched Records", f"{matched_count}", border=True)
+            st.metric("Total Discrepancy Records", f"{total_discre}", border=True)
+
+            # if not discrepancy_insights_df.empty:
+            #     top_outlet = discrepancy_insights_df['outlet_code'].value_counts().idxmax()
+            #     top_outlet_count = discrepancy_insights_df['outlet_code'].value_counts().max()
+            #     st.metric("Highest Discrepancy Outlet", f"{top_outlet}", delta=f"{top_outlet_count} records", delta_color="off", border=True, height=125)
+            # else:
+            #     st.metric("Highest Discrepancy Outlet", "N/A", border=True, height=125)
 
     st.divider()
 

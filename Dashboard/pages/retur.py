@@ -88,11 +88,11 @@ except FileNotFoundError:
 st.header("Upload Your Document")
 data_file = None
 if role == "Supply Chain": 
-    st.markdown("**Note:** please ensure your file contains columns like `kode_outlet`, `no_penerimaan`, `tgl_penerimaan`, and `jml_neto`.")
+    st.markdown("**Note:** Pastikan kolom berikut tersedia dalam file `kode_outlet`, `no_penerimaan`, `tgl_penerimaan`, dan `jml_neto`.")
     data_file = st.file_uploader("Upload your Supply Chain (SC) file", type=['csv', 'xlsx'])
 
 elif role == "Accountant": 
-    st.markdown("**Note:** please ensure your file contains columns like `profit_center`, `doc_id`, `posting_date`, and `kredit`.")
+    st.markdown("**Note:** Pastikan kolom berikut tersedia dalam file `profit_center`, `doc_id`, `posting_date`, dan `kredit`.")
     data_file = st.file_uploader("Upload your Accountant (SAP) file", type=['csv', 'xlsx'])
 
 if data_file and VAL_FILE_LOADED:
@@ -128,6 +128,8 @@ if data_file and VAL_FILE_LOADED:
                 id_col, val_id_col = 'transaction_code', 'no_transaksi'
                 
         elif role == "Accountant":
+            st.markdown("File yang diupload:")
+            st.dataframe(data_df.head())
             sap_required = {"profit_center": "Profit Center", "doc_id": "Document ID", "posting_date": "Posting Date", "kredit": "Credit Amount"}
             sap_df_mapped = map_columns(data_df, sap_required, "SAP")
             if sap_df_mapped is not None:
