@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import time
 
 # --- Helper Functions ---
 def load_dataframe(uploaded_file):
@@ -17,13 +18,14 @@ def map_columns(df, required_cols_map, file_type):
         st.error(f"Error: Kolom dalam dokumen anda tidak sesuai! Pastikan dokumen yang anda kirim sesuai dengan role Anda!", icon="🚨")
         return None
     if not missing_keys: return df
-    st.write("---"); st.subheader(f"Map Columns for {file_type} File")
+    st.write("---"); st.subheader(f"Terdapat kolom yang tidak sesuai pada file {file_type}")
+    st.write("Silahkan pilih kolom yang sesuai untuk melanjutkan proses validasi.")
     mappings, all_mapped = {}, True
     for key in required_keys:
         if key in original_cols: mappings[key] = key
         else:
             friendly_name = required_cols_map[key]
-            selected_col = st.selectbox(f"Which column represents '{friendly_name}'?", list(original_cols), index=None, placeholder="Select...", key=f"map_{file_type}_{key}")
+            selected_col = st.selectbox(f"Pilihlah kolom yang mewakilkan :red-background['{friendly_name}']?", list(original_cols), index=None, placeholder="Select...", key=f"map_{file_type}_{key}")
             if selected_col: mappings[selected_col] = key
             else: all_mapped = False
     if not all_mapped:
@@ -31,19 +33,46 @@ def map_columns(df, required_cols_map, file_type):
     return df.rename(columns=mappings)
 
 # --- Page Configuration and Authentication ---
-st.set_page_config(page_title="Document Validation", layout="wide")
+st.set_page_config(page_title="Document Validation", layout="centered")
+
+
 if not st.session_state.get('logged_in'):
     st.switch_page("pages/login.py")
     st.stop()
+
+
 role = st.session_state.get('role')
 user = st.session_state.get('user')
 st.title(f"📄 Document Validation Portal")
-st.markdown(f"Welcome, **{user}**!")
-st.markdown(f"Anda terdaftar sebagai **{role}**")
 
+col1, col2 = st.columns(2)
+with col1:
+    st.subheader("User Information")
+    with st.container(border=True, height=147):
+        st.markdown(f'''Nama User: :green[ **{user}**]''')
+        st.markdown(f''':blue-background[Role User: **{role}**]''')
+        st.markdown(f"Waktu login: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+with col2:
+    st.subheader("Document Types")
+    if role == "Supply Chain":
+        with st.container(border=True):
+            st.markdown("Dokumen yang dapat anda validasi:")
+            st.markdown("- **Dokumen Reguler Penjualan**")
+            st.markdown("- **Dokumen Retur Penjualan**")
+    elif role == "Accountant":
+        with st.container(border=True):
+            st.markdown("Dokumen yang dapat anda validasi:")
+            st.markdown("- **Dokumen Reguler Penjualan**")
+            st.markdown("- **Dokumen Retur Penjualan**")
+
+
+# --- Sidebar Navigation ---
 with st.sidebar:
+    st.image("kf.png")
+    st.divider()
     st.header("Controls")
-    if st.button("Logout"):
+    if st.button("Logout", use_container_width=True, type="primary"):
         for key in list(st.session_state.keys()): del st.session_state[key]
         st.switch_page("pages/login.py")
         st.stop()
@@ -58,8 +87,13 @@ except FileNotFoundError:
 # --- File Upload Section ---
 st.header("Upload Your Document")
 data_file = None
-if role == "Supply Chain": data_file = st.file_uploader("Upload your Supply Chain (SC) file", type=['csv', 'xlsx'])
-elif role == "Accountant": data_file = st.file_uploader("Upload your Accountant (SAP) file", type=['csv', 'xlsx'])
+if role == "Supply Chain": 
+    st.markdown("**Note:** please ensure your file contains columns like `kode_outlet`, `no_penerimaan`, `tgl_penerimaan`, and `jml_neto`.")
+    data_file = st.file_uploader("Upload your Supply Chain (SC) file", type=['csv', 'xlsx'])
+
+elif role == "Accountant": 
+    st.markdown("**Note:** please ensure your file contains columns like `profit_center`, `doc_id`, `posting_date`, and `kredit`.")
+    data_file = st.file_uploader("Upload your Accountant (SAP) file", type=['csv', 'xlsx'])
 
 if data_file and VAL_FILE_LOADED:
     data_df = load_dataframe(data_file)
@@ -76,9 +110,12 @@ if data_file and VAL_FILE_LOADED:
     result_df = None
     sc_df_mapped, sap_df_mapped = None, None
 
-    with st.spinner("Validating file..."):
+    with st.spinner("Validating Column..."):
+        time.sleep(0.5)
         if role == "Supply Chain":
-            sc_required = {"kode_outlet": "Outlet Code", "no_penerimaan": "Receipt Number", "tgl_penerimaan": "Receipt Date", "jml_neto": "Net Amount"}
+            st.markdown("File yang diupload:")
+            st.dataframe(data_df.head())
+            sc_required = {"kode_outlet": "Outlet Code", "no_penerimaan": "Nomor Penerimaan", "tgl_penerimaan": "Tanggal Penerimaan", "jml_neto": "Jumlah Neto"}
             sc_df_mapped = map_columns(data_df, sc_required, "SC")
             if sc_df_mapped is not None:
                 sc_df_mapped['jml_neto'] = pd.to_numeric(sc_df_mapped['jml_neto'], errors='coerce').fillna(0)
@@ -125,6 +162,7 @@ if data_file and VAL_FILE_LOADED:
             result_df = merged.rename(columns={'dpp': 'validation_total'})
             final_cols = [id_col, 'outlet_code', 'date', 'target_col_value', 'validation_total', 'difference', 'status']
             result_df = result_df[final_cols]
+
             
     if result_df is not None:
         st.session_state['result_df'] = result_df
@@ -132,5 +170,6 @@ if data_file and VAL_FILE_LOADED:
         st.session_state['role'] = role
         st.session_state['sc_df'] = sc_df_mapped
         st.session_state['sap_df'] = sap_df_mapped
-        st.success("Validation complete! The results are ready.")
-        st.page_link("pages/dashboard.py", label="Go to Dashboard", icon="📊")
+        st.success("Kolom sudah sesuai! Hasil sudah siap.")
+        if st.button("View Results", use_container_width=True, type="primary"):
+            st.switch_page("pages/dashboard.py")

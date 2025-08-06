@@ -30,15 +30,22 @@ df['date'] = pd.to_datetime(df['date'])
 # --- Main Dashboad ---
 st.title("📊 Validation Dashboard")
 
+# --- Sidebar Navigation ---
 with st.sidebar:
-    st.info(f"Welcome, **{role}**!")
-    st.page_link("pages/retur.py", label="Go to Validation Page", icon="📄")
+    # st.info(f"Welcome, **{role}**!")
+    st.image("kf.png")
+    st.divider()
+    st.header("Navigation")
+    if st.button("Upload File Kembali", use_container_width=True, type="secondary", icon=":material/upload:"):
+        st.switch_page("pages/retur.py")
+    st.divider()
     st.header("Controls")
-    if st.button("Logout"):
+    if st.button("Logout", use_container_width=True, type="primary"):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.page_link("pages/login.py", label="Logged out. Go to Login.", icon="🔒")
         st.stop()
+
 
 # --- Create Tabs ---
 tab1, tab2 = st.tabs(["Validation Results", "Dashboard Insights"])
@@ -47,7 +54,7 @@ tab1, tab2 = st.tabs(["Validation Results", "Dashboard Insights"])
 with tab1:
     st.header("Validation Results (Based on 'DPP')")
     discrepancy_total = (df['status'] == 'Discrepancy').sum()
-    st.info(f"A total of **{discrepancy_total}** discrepancies were found out of **{len(df)}** records.")
+    st.info(f"**{discrepancy_total}** data yang tidak sesuai dari **{len(df)}** data berdasarkan perhitungan kolom 'dpp'.")
     
     st.divider()
     filter_cols = st.columns(4)
@@ -90,7 +97,11 @@ with tab1:
     id_col = 'transaction_code' if role == 'Supply Chain' else 'document_id'
     display_order = [id_col, 'outlet_code', 'date', 'target_col_value', 'validation_total', 'difference', 'status', 'Discrepancy_category']
 
-    st.dataframe(filtered_df[display_order], use_container_width=True)
+    st.dataframe(filtered_df[display_order], use_container_width=True, column_config={
+        'target_col_value': st.column_config.NumberColumn(format="localized"),
+        'validation_total': st.column_config.NumberColumn(format="localized"),
+        'difference': st.column_config.NumberColumn(format="localized"),
+    })
 
     # --- MODIFICATION: Discrepancy Analysis Table (Recalculated) ---
     st.divider()
@@ -113,16 +124,20 @@ with tab1:
                 recalc_df = pd.merge(discrepancy_records, val_total_agg, on='document_id', how='left')
 
             # Calculate the new difference
-            recalc_df['new_difference'] = recalc_df['target_col_value'] - recalc_df['total'].fillna(0)
+            recalc_df['new_difference'] = (recalc_df['target_col_value'] - recalc_df['total'].fillna(0)).abs()
             
             # Define columns for the new table and display it
             recalc_display_order = [id_col, 'outlet_code','date', 'target_col_value', 'total', 'new_difference', 'status']
-            recalc_df['status'] = recalc_df['new_difference'].apply(lambda x: 'Discrepancy' if abs(x) > 0.01 else 'Matched')
+            recalc_df['status'] = recalc_df['new_difference'].apply(lambda x: 'Discrepancy' if x >= 10 else 'Matched')
             recalc_status = recalc_df['status']
             total_discre = (recalc_status == 'Discrepancy').sum()
             
-            st.info(f"**{total_discre}** discrepancies found after recalculating with 'Total'.")
-            st.dataframe(recalc_df[recalc_display_order].rename(columns={'total': 'validation_raw_total', 'new_difference': 'recalculated_difference'}), use_container_width=True)
+            st.info(f"**{total_discre}** data tidak sesuai setelah menghitung ulang dengan kolom 'Total'.")
+            st.dataframe(recalc_df[recalc_display_order].rename(columns={'total': 'validation_raw_total', 'new_difference': 'recalculated_difference'}), use_container_width=True, column_config={
+                'target_col_value': st.column_config.NumberColumn(format="localized"),
+                'validation_raw_total': st.column_config.NumberColumn(format="localized"),
+                'recalculated_difference': st.column_config.NumberColumn(format="localized"),
+            })
         else:
             st.success("No discrepancies in the current filtered view to analyze.")
     else:
@@ -140,7 +155,10 @@ with tab1:
                 st.subheader(f"Source Data (SC)")
                 source_drill = sc_df[sc_df['no_penerimaan'].astype(str) == drill_down_id]
                 sum_source = source_drill['jml_neto'].sum() if not source_drill.empty else 0
-                st.write(f"Total from Source: **{abs(sum_source):,}**")
+                st.write(f"Sum dari :green[Kolom Target] SC: :green-background[**{abs(sum_source):,}**]")
+                st.markdown(" ")
+                st.markdown(" ")
+                st.markdown(" ")
                 st.dataframe(source_drill)
             with drill_col2:
                 st.subheader(f"Validation Data (VAL)")
@@ -148,15 +166,15 @@ with tab1:
                 # Bug Fix: Sum 'total' as it's the reliably available column
                 sum_val_tot = val_drill['total'].sum() if not val_drill.empty else 0
                 sum_val_dpp = val_drill['dpp'].sum() if 'dpp' in val_drill.columns else 0
-                st.write(f"Sum total from Validation: **{sum_val_tot:,}**")
-                st.write(f"Sum dpp from Validation: **{sum_val_dpp:,}**")
+                st.write(f"Sum kolom :red[total] dari data Validation: :red-background[**{sum_val_tot:,}**]")
+                st.write(f"Sum kolom :blue[dpp] dari data Validation: :blue-background[**{sum_val_dpp:,}**]")
                 st.dataframe(val_drill)
         elif role == 'Accountant' and sap_df is not None:
             with drill_col1:
                 st.subheader(f"Source Data (SAP)")
                 source_drill = sap_df[sap_df['doc_id'].astype(str) == drill_down_id]
                 sum_source = source_drill['kredit'].sum() if not source_drill.empty else 0
-                st.write(f"Total from Source: **{abs(sum_source):,}**")
+                st.write(f"Sum dari :green[Kolom Target] SC: :green-background[**{abs(sum_source):,}**]")
                 st.dataframe(source_drill)
             with drill_col2:
                 st.subheader(f"Validation Data (VAL)")
@@ -164,8 +182,8 @@ with tab1:
                 # Bug Fix: Sum 'total' as it's the reliably available column
                 sum_val_tot = val_drill['total'].sum() if not val_drill.empty else 0
                 sum_val_dpp = val_drill['dpp'].sum() if 'dpp' in val_drill.columns else 0
-                st.write(f"Sum total from Validation: **{sum_val_tot:,}**")
-                st.write(f"Sum dpp from Validation: **{sum_val_dpp:,}**")
+                st.write(f"Sum kolom :red[total] dari data Validation: :red-background[**{sum_val_tot:,}**]")
+                st.write(f"Sum kolom :blue[dpp] dari data Validation: :blue-background[**{sum_val_dpp:,}**]")
                 st.dataframe(val_drill)
 
 # --- Tab 2: Dashboard Insights ---

@@ -23,7 +23,7 @@ def login_user(username, password):
         return None
 
 # --- Streamlit Page Configuration ---
-st.set_page_config(page_title="KFA Portal Login", layout="centered")
+st.set_page_config(page_title="KFA Portal Login", layout="centered", initial_sidebar_state="collapsed")
 
 # --- Initialize Session State ---
 if 'logged_in' not in st.session_state:
@@ -44,7 +44,7 @@ if st.session_state.logged_in:
 with st.form("login_form"):
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
-    submitted = st.form_submit_button("Login")
+    submitted = st.form_submit_button("Login", type="secondary")
 
 if submitted:
     if not username or not password:
@@ -63,7 +63,6 @@ if submitted:
                     st.session_state.logged_in = True
                     st.session_state.role = role
                     st.session_state.user = user
-                    st.success("Login successful! Redirecting...")
                     try:
                         st.switch_page("pages/retur.py")
                     except StreamlitAPIException:
