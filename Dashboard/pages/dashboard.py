@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from streamlit_extras.dataframe_explorer import dataframe_explorer
+from streamlit_extras.metric_cards import style_metric_cards
+import requests
 
 st.set_page_config(page_title="Validation Dashboard", layout="wide")
 
@@ -21,6 +22,7 @@ if not all(key in st.session_state for key in required_keys):
 # --- Load Data From Session ---
 df = st.session_state['result_df']
 val_df = st.session_state['val_df']
+user = st.session_state.get('user')
 role = st.session_state.get('role')
 sc_df = st.session_state.get('sc_df')
 sap_df = st.session_state.get('sap_df')
@@ -48,7 +50,7 @@ with st.sidebar:
 
 
 # --- Create Tabs ---
-tab1, tab2 = st.tabs(["Validation Results", "Dashboard Insights"])
+tab1, tab2 = st.tabs(["Validation Summary", "Dashboard Insights"])
 
 # --- Tab 1: Filterable Results Table ---
 with tab2:
@@ -155,11 +157,14 @@ with tab2:
 
             # Tambahkan kategori 'Missing'
             if pd.api.types.is_categorical_dtype(recalc_df['Discrepancy_category']):
-                recalc_df['Discrepancy_category'] = recalc_df['Discrepancy_category'].cat.add_categories(['Missing'])
+                recalc_df['Discrepancy_category'] = recalc_df['Discrepancy_category'].cat.add_categories(['Valid', 'Missing'])
             else:
-                recalc_df['Discrepancy_category'] = recalc_df['Discrepancy_category']
+                recalc_df['Discrepancy_category'] = recalc_df['Discrepancy_category'].fillna('Valid')
 
-            # Tandai baris yang memiliki NaN di salah satu kolom sebagai 'Missing'
+            # Assign 'Valid' untuk nilai recalculated_difference == 0
+            recalc_df.loc[recalc_df['recalculated_difference'] == 0, 'Discrepancy_category'] = 'Valid'
+
+            # Assign 'Missing' jika ada nilai NaN di baris mana pun
             recalc_df.loc[recalc_df.isnull().any(axis=1), 'Discrepancy_category'] = 'Missing'
 
             with filter_cols[3]:
@@ -239,8 +244,7 @@ with tab2:
 
 # --- Tab 2: Dashboard Insights ---
 with tab1:
-    # This tab remains unchanged and provides global insights
-    st.header("File Validation")
+    st.header("File Validation Summary")
     total_count = len(df)
     matched_count = total_count - total_discre
     validation_pct = (matched_count / total_count * 100) if total_count > 0 else 0
@@ -249,6 +253,7 @@ with tab1:
     bigc1, bigc2 = st.columns(2)
     with bigc1:
         if discrepancy_insights_df.empty:
+            val_status = "Valid"
             st.markdown(
                 """
                 <div style="background-color:#d4edda; color:#155724; padding:20px; border-radius:10px; height:230px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
@@ -256,13 +261,14 @@ with tab1:
                         ✅
                     </div>
                     <div style="margin-top:15px; font-size:20px; font-weight:bold; text-align:center;">
-                        Data Valid<br>Tidak ada discrepancy ditemukan!
+                        Data Valid<br>Tidak ada perbedaan data ditemukan!
                     </div>
                 </div>
                 """,
                 unsafe_allow_html=True
             )
         else:
+            val_status = "Invalid"
             st.markdown(
                 """
                 <div style="background-color:#f8d7da; color:#721c24; padding:20px; border-radius:10px; height:230px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
@@ -298,7 +304,63 @@ with tab1:
     if discrepancy_insights_df.empty:
         st.success("🎉 No discrepancies found in the entire dataset!")
     else:
-        st.subheader("Discrepancy Categories")
         category_counts = discrepancy_insights_df['Discrepancy_category'].value_counts().reset_index()
-        fig = px.pie(category_counts, names='Discrepancy_category', values='count', title='Distribution of Discrepancy Types (Overall)')
-        st.plotly_chart(fig, use_container_width=True)
+        category_counts = category_counts[category_counts['Discrepancy_category'] != 'Valid']
+
+        st.subheader("📌 Jumlah per Kategori Discrepancy")
+        metric_cols = st.columns(len(category_counts))
+
+        # --- Jumlah Discrepancy per Kategori ---
+        all_categories = ["Rounding (< 2k)", "Small (2k-10k)", "Medium (10k-100k)", "Big (> 100k)", "Missing"]
+        category_dict = dict(zip(category_counts['Discrepancy_category'], category_counts['count']))
+        metric_cols = st.columns(len(all_categories))
+        for i, cat in enumerate(all_categories):
+            count = int(category_dict.get(cat, 0))
+            metric_cols[i].metric(label=cat, value=count, border=True)
+        st.markdown(" ")
+
+        # --- Visualisasi Kategori Discrepancy ---
+        col1, col2 = st.columns(2)
+        with col1:
+            with st.container(border=True):
+                fig = px.pie(category_counts, names='Discrepancy_category', values='count', title='Distribusi Kategori Discrepancy')
+                st.plotly_chart(fig, use_container_width=True)
+        with col2:
+            with st.container(border=True):
+                fig_bar = px.bar(
+                category_counts,
+                x='Discrepancy_category',
+                y='count',
+                text='count',
+                title="Discrepancy Category Count",
+                labels={'Discrepancy_category': 'Category', 'count': 'Jumlah'},
+                )
+                fig_bar.update_traces(textposition='outside')
+                fig_bar.update_layout(
+                    xaxis_title="Discrepancy Category",
+                    yaxis_title="Jumlah",
+                    uniformtext_minsize=8,
+                    uniformtext_mode='hide',
+                )
+                st.plotly_chart(fig_bar, use_container_width=True)
+file_type = st.session_state.get('file_type')
+
+# --- Send Data to API ---
+
+payload = {
+    "user": user,
+    "role": role,
+    "file_type": file_type,
+    "val_status": val_status,
+    "val_score": validation_pct
+}
+
+try:
+    response = requests.post("http://localhost:5678/webhook/insert-process", json=payload)
+    if response.status_code == 200:
+        st.toast("Data berhasil dikirim ke Database.")
+        st.toast(f"User: {user}, Role: {role}, File Type: {file_type}, Status: {val_status}, Score: {validation_pct:.2f}%")
+    else:
+        st.warning(f"Gagal kirim data. Status code: {response.status_code}")
+except Exception as e:
+    st.error(f"Error saat mengirim data ke API: {e}")

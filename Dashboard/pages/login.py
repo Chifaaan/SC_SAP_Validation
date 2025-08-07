@@ -15,7 +15,7 @@ def login_user(username, password):
     }
     
     try:
-        response = requests.post(api_url, json=payload, timeout=10)
+        response = requests.post(api_url, json=payload, timeout=5)
         response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
         return response.json()
     except requests.exceptions.RequestException as e:

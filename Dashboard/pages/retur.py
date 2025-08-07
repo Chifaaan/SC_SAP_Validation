@@ -29,7 +29,7 @@ def map_columns(df, required_cols_map, file_type):
             if selected_col: mappings[selected_col] = key
             else: all_mapped = False
     if not all_mapped:
-        st.warning("Please map all required columns."); return None
+        st.warning("Tolong lengkapi seluruh kolom."); return None
     return df.rename(columns=mappings)
 
 # --- Page Configuration and Authentication ---
@@ -39,6 +39,12 @@ st.set_page_config(page_title="Document Validation", layout="centered")
 if not st.session_state.get('logged_in'):
     st.switch_page("pages/login.py")
     st.stop()
+
+# --- Set login time once only ---
+if 'login_time' not in st.session_state:
+    st.session_state['login_time'] = pd.Timestamp.now()
+
+login_time = st.session_state['login_time']
 
 
 role = st.session_state.get('role')
@@ -51,7 +57,7 @@ with col1:
     with st.container(border=True, height=147):
         st.markdown(f'''Nama User: :green[ **{user}**]''')
         st.markdown(f''':blue-background[Role User: **{role}**]''')
-        st.markdown(f"Waktu login: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        st.markdown(f"Waktu login: {login_time.strftime('%Y-%m-%d %H:%M:%S')}")
 
 with col2:
     st.subheader("Document Types")
@@ -85,21 +91,22 @@ except FileNotFoundError:
     st.error("Validation file not found: `im_purchases_and_return.csv` must be in the root directory."); st.stop()
 
 # --- File Upload Section ---
+file_type = st.radio("Select Document Type", ["Reguler", "Retur"], key="file_type_selector", horizontal=True)
 st.header("Upload Your Document")
 data_file = None
 if role == "Supply Chain": 
-    st.markdown("**Note:** Pastikan kolom berikut tersedia dalam file `kode_outlet`, `no_penerimaan`, `tgl_penerimaan`, dan `jml_neto`.")
+    st.markdown("**Note:** Pastikan kolom berikut tersedia: `kode_outlet`, `no_penerimaan`, `tgl_penerimaan`, dan `jml_neto`.")
     data_file = st.file_uploader("Upload your Supply Chain (SC) file", type=['csv', 'xlsx'])
 
 elif role == "Accountant": 
-    st.markdown("**Note:** Pastikan kolom berikut tersedia dalam file `profit_center`, `doc_id`, `posting_date`, dan `kredit`.")
+    st.markdown("**Note:** Pastikan kolom berikut tersedia: `profit_center`, `doc_id`, `posting_date`, dan `kredit`.")
     data_file = st.file_uploader("Upload your Accountant (SAP) file", type=['csv', 'xlsx'])
 
 if data_file and VAL_FILE_LOADED:
     data_df = load_dataframe(data_file)
     if data_df is None: st.stop()
 
-    # --- THIS IS THE NEW CORE LOGIC ---
+    # --- CORE LOGIC ---
     val_required_cols = {"kode_outlet": "Outlet", "document_id": "Doc ID", "no_transaksi": "Trans Num", "dpp": "DPP", "total": "Total"}
     val_df = map_columns(val_df_raw.copy(), val_required_cols, "VAL")
     if val_df is None: st.stop()
@@ -172,6 +179,7 @@ if data_file and VAL_FILE_LOADED:
         st.session_state['role'] = role
         st.session_state['sc_df'] = sc_df_mapped
         st.session_state['sap_df'] = sap_df_mapped
+        st.session_state['file_type'] = file_type
         st.success("Kolom sudah sesuai! Hasil sudah siap.")
         if st.button("View Results", use_container_width=True, type="primary"):
             st.switch_page("pages/dashboard.py")

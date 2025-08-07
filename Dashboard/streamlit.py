@@ -5,6 +5,7 @@ pages = {
     [
         st.Page("pages/login.py"),
         st.Page("pages/home.py", title="Home", icon=":material/home:"),
+        st.Page("pages/process.py", title="Process")
     ],
 
     "Validation":
