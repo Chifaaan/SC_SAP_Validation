@@ -64,7 +64,7 @@ if submitted:
                     st.session_state.role = role
                     st.session_state.user = user
                     try:
-                        st.switch_page("pages/retur.py")
+                        st.switch_page("pages/process.py")
                     except StreamlitAPIException:
                          # Handle cases where st.switch_page might not be available in older versions
                          st.info("Please navigate to the 'retur' page from the sidebar.")

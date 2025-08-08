@@ -40,6 +40,8 @@ with st.sidebar:
     st.header("Navigation")
     if st.button("Upload File Kembali", use_container_width=True, type="secondary", icon=":material/upload:"):
         st.switch_page("pages/retur.py")
+    if st.button("Lihat Log Proses", use_container_width=True, type="secondary", icon=":material/history:"):
+        st.switch_page("pages/process.py")
     st.divider()
     st.header("Controls")
     if st.button("Logout", use_container_width=True, type="primary"):
@@ -343,24 +345,30 @@ with tab1:
                     uniformtext_mode='hide',
                 )
                 st.plotly_chart(fig_bar, use_container_width=True)
-file_type = st.session_state.get('file_type')
+# Cek apakah data sudah pernah dikirim
+if "data_sent" not in st.session_state:
+    st.session_state.data_sent = False
 
-# --- Send Data to API ---
+if not st.session_state.data_sent:
+    file_type = st.session_state.get('file_type')
+    file_name = st.session_state.get('uploaded_filename', 'Unknown File')
 
-payload = {
-    "user": user,
-    "role": role,
-    "file_type": file_type,
-    "val_status": val_status,
-    "val_score": validation_pct
-}
+    # --- Send Data to API ---
+    payload = {
+        "user": user,
+        "role": role,
+        "file_type": file_type,
+        "val_status": val_status,
+        "val_score": validation_pct,
+        "file_name": file_name
+    }
 
-try:
-    response = requests.post("http://localhost:5678/webhook/insert-process", json=payload)
-    if response.status_code == 200:
-        st.toast("Data berhasil dikirim ke Database.")
-        st.toast(f"User: {user}, Role: {role}, File Type: {file_type}, Status: {val_status}, Score: {validation_pct:.2f}%")
-    else:
-        st.warning(f"Gagal kirim data. Status code: {response.status_code}")
-except Exception as e:
-    st.error(f"Error saat mengirim data ke API: {e}")
+    try:
+        response = requests.post("http://localhost:5678/webhook/insert-process", json=payload)
+        if response.status_code == 200:
+            st.toast("Data berhasil dikirim ke Database.")
+            st.session_state.data_sent = True  # Set flag agar tidak mengirim lagi
+        else:
+            st.warning(f"Gagal kirim data. Status code: {response.status_code}")
+    except Exception as e:
+        st.error(f"Error saat mengirim data ke API: {e}")

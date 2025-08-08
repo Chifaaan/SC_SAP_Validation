@@ -6,9 +6,14 @@ import time
 # --- Helper Functions ---
 def load_dataframe(uploaded_file):
     try:
-        if uploaded_file.name.endswith('.csv'): return pd.read_csv(uploaded_file)
-        elif uploaded_file.name.endswith(('.xls', '.xlsx')): return pd.read_excel(uploaded_file)
-    except Exception as e: st.error(f"Error reading file: {e}")
+        # Baca file sesuai ekstensi
+        if uploaded_file.name.endswith('.csv'):
+            return pd.read_csv(uploaded_file)
+        elif uploaded_file.name.endswith(('.xls', '.xlsx')):
+            return pd.read_excel(uploaded_file)
+    except Exception as e:
+        st.error(f"Error reading file: {e}")
+    
     return None
 
 def map_columns(df, required_cols_map, file_type):
@@ -104,7 +109,10 @@ elif role == "Accountant":
 
 if data_file and VAL_FILE_LOADED:
     data_df = load_dataframe(data_file)
+    # Simpan nama file ke dalam session_state
     if data_df is None: st.stop()
+    st.session_state['uploaded_filename'] = data_file.name
+    st.write(f"{data_file.name}")
 
     # --- CORE LOGIC ---
     val_required_cols = {"kode_outlet": "Outlet", "document_id": "Doc ID", "no_transaksi": "Trans Num", "dpp": "DPP", "total": "Total"}
