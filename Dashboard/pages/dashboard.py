@@ -15,8 +15,10 @@ if not st.session_state.get('logged_in'):
 # Check for all required dataframes
 required_keys = ['result_df', 'val_df', 'role']
 if not all(key in st.session_state for key in required_keys):
-    st.warning("No data found or session is incomplete. Please upload and process a file on the 'retur' page first.")
-    st.page_link("pages/retur.py", label="Go to Validation Page", icon="📄")
+    st.warning("Kamu belum pernah melakukan vaidasi dokumen. Silahkan upload file terlebih dahulu.")
+    link1,link2 = st.columns([1, 5])
+    link1.page_link("pages/retur.py", label="Go to Validation Page", icon="📄")
+    link2.page_link("pages/process.py", label="Go to Process Log", icon="📜")
     st.stop()
 
 # --- Load Data From Session ---
@@ -39,6 +41,7 @@ with st.sidebar:
     st.divider()
     st.header("Navigation")
     if st.button("Upload File Kembali", use_container_width=True, type="secondary", icon=":material/upload:"):
+        st.session_state.data_sent = False
         st.switch_page("pages/retur.py")
     if st.button("Lihat Log Proses", use_container_width=True, type="secondary", icon=":material/history:"):
         st.switch_page("pages/process.py")
@@ -56,7 +59,8 @@ tab1, tab2 = st.tabs(["Validation Summary", "Dashboard Insights"])
 
 # --- Tab 1: Filterable Results Table ---
 with tab2:
-    st.header("Validation Results (Based on 'DPP')")
+    head1, head2 = st.columns([3, 1])
+    head1.header("Validasi dengan kolom 'dpp'")
     filter_cols = st.columns(4)
     
     with filter_cols[0]:
@@ -106,9 +110,21 @@ with tab2:
         'difference': st.column_config.NumberColumn(format="localized"),
     })
 
+    with head2:
+        st.markdown(" ")
+        st.download_button("Download Data", 
+            data=filtered_df.to_csv(index=False).encode('utf-8'), 
+            file_name='validation_results.csv', 
+            mime='text/csv',
+            use_container_width=True,
+            type="primary",
+            icon=":material/download:"
+        )
+    
     # --- MODIFICATION: Discrepancy Analysis Table (Recalculated) ---
     st.divider()
-    st.header("Discrepancy Analysis (Recalculated with 'Total')")
+    body1, body2 = st.columns([3, 1])
+    body1.header("Perhitungan ulang dengan kolom 'Total'")
 
     if 'total' in val_df.columns:
         discrepancy_records = filtered_df[filtered_df['status'] == 'Discrepancy'].copy()
@@ -195,7 +211,16 @@ with tab2:
                 'validation_raw_total': st.column_config.NumberColumn(format="localized"),
                 'recalculated_difference': st.column_config.NumberColumn(format="localized"),
             })
-
+            with body2:
+                st.markdown(" ")
+                st.download_button("Download Recalculated Data", 
+                    data=filtered_recalc_df.to_csv(index=False).encode('utf-8'), 
+                    file_name='recalculated_validation_results.csv', 
+                    mime='text/csv',
+                    use_container_width=True,
+                    type="primary",
+                    icon=":material/download:"
+                )
         else:
             st.success("No discrepancies in the current filtered view to analyze.")
     else:
@@ -302,6 +327,15 @@ with tab1:
             #     st.metric("Highest Discrepancy Outlet", "N/A", border=True, height=125)
 
     st.divider()
+
+
+
+
+
+
+
+
+
 
     if discrepancy_insights_df.empty:
         st.success("🎉 No discrepancies found in the entire dataset!")

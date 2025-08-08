@@ -3,6 +3,22 @@ import pandas as pd
 import numpy as np
 import time
 
+# --- Page Configuration and Authentication ---
+st.set_page_config(page_title="Document Validation", layout="centered", initial_sidebar_state="expanded")
+
+# --- Sidebar Navigation ---
+with st.sidebar:
+    st.image("kf.png")
+    st.divider()
+    st.header("Navigation") 
+    if st.button("Lihat Log Proses", use_container_width=True, type="secondary", icon=":material/history:"):
+        st.session_state.data_sent = True
+        st.switch_page("pages/process.py")
+    st.header("Controls")
+    if st.button("Logout", use_container_width=True, type="primary"):
+        for key in list(st.session_state.keys()): del st.session_state[key]
+        st.switch_page("pages/login.py")
+        st.stop()
 # --- Helper Functions ---
 def load_dataframe(uploaded_file):
     try:
@@ -37,8 +53,6 @@ def map_columns(df, required_cols_map, file_type):
         st.warning("Tolong lengkapi seluruh kolom."); return None
     return df.rename(columns=mappings)
 
-# --- Page Configuration and Authentication ---
-st.set_page_config(page_title="Document Validation", layout="centered")
 
 
 if not st.session_state.get('logged_in'):
@@ -78,15 +92,6 @@ with col2:
             st.markdown("- **Dokumen Retur Penjualan**")
 
 
-# --- Sidebar Navigation ---
-with st.sidebar:
-    st.image("kf.png")
-    st.divider()
-    st.header("Controls")
-    if st.button("Logout", use_container_width=True, type="primary"):
-        for key in list(st.session_state.keys()): del st.session_state[key]
-        st.switch_page("pages/login.py")
-        st.stop()
 
 # --- Load Validation File ---
 try:
@@ -112,7 +117,6 @@ if data_file and VAL_FILE_LOADED:
     # Simpan nama file ke dalam session_state
     if data_df is None: st.stop()
     st.session_state['uploaded_filename'] = data_file.name
-    st.write(f"{data_file.name}")
 
     # --- CORE LOGIC ---
     val_required_cols = {"kode_outlet": "Outlet", "document_id": "Doc ID", "no_transaksi": "Trans Num", "dpp": "DPP", "total": "Total"}

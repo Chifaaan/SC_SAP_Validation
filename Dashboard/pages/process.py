@@ -1,18 +1,27 @@
 import streamlit as st
 import pandas as pd
 import requests
+from streamlit_extras.add_vertical_space import add_vertical_space
 
-st.set_page_config(page_title="Process Log", layout="wide")
+st.set_page_config(page_title="Process Log", layout="wide", initial_sidebar_state="expanded")
+role = st.session_state.get('role')
+user = st.session_state.get('user')
 
 # --- Sidebar Navigation ---
 with st.sidebar:
     # st.info(f"Welcome, **{role}**!")
     st.image("kf.png")
     st.divider()
+    with st.container(border=True, height=110):
+        st.markdown(f'''Selamat Datang :green[ **{user}**]''')
+        st.markdown(f''':blue-background[Role User: **{role}**]''')
+    st.divider()
     st.header("Navigation")
     if st.button("Upload File Kembali", use_container_width=True, type="secondary", icon=":material/upload:"):
+        st.session_state.data_sent = False
         st.switch_page("pages/retur.py")
     if st.button("Lihat Dashboard", use_container_width=True, type="secondary", icon=":material/dataset:"):
+        st.session_state.data_sent = True
         st.switch_page("pages/dashboard.py")
     st.divider()
     st.header("Controls")
@@ -44,19 +53,23 @@ try:
     else:
         st.warning(f"Gagal mengambil data. Status code: {response.status_code}")
 except Exception as e:
-    st.error(f"Data Kosong dari Database")
+    st.error(f"Database Kosong")
 
 # --- UI Section ---
-col1, col2 = st.columns([8.5, 1])
+col1, col2, col3 = st.columns([7, 1, 1])
 col1.markdown("### Riwayat Validasi Dokumen")
 with col2:
+    if st.button("Refresh", use_container_width=True, type="secondary"):
+        st.rerun()
+with col3:
     if st.button("Add Process", type="primary"):
         st.session_state['selected_log'] = None
+        st.session_state.data_sent = False
         st.switch_page("pages/retur.py")
 
 # --- Table Header ---
 with st.container(border=True):
-    header_cols = st.columns([2, 2, 2, 2, 2, 2, 2])
+    header_cols = st.columns([2, 2, 2, 2, 2, 2, 2.2])
     header_cols[0].markdown("**👤 User**")
     header_cols[1].markdown("**🧾 File Type**")
     header_cols[2].markdown("**🔰 File Name**")
@@ -64,14 +77,14 @@ with st.container(border=True):
     header_cols[4].markdown("**📅 Upload Time**")
     header_cols[5].markdown("**📊 Validation Score**")
     header_cols[6].markdown("**✅ Validation Status**")
-    st.markdown("---")
+    add_vertical_space(1)
 
     # --- Table Rows ---
     if df.empty:
         st.markdown("<p style='text-align:center; color:gray;'>📭 Process Kosong</p>", unsafe_allow_html=True)
     else:
         for i, row in df.iterrows():
-            row_cols = st.columns([2, 2, 2, 2, 2, 2,2 ])
+            row_cols = st.columns([2, 2, 2, 2, 2, 2,2.2 ])
             row_cols[0].write(row.get('user', ''))
             row_cols[1].write(row.get('file_type', ''))
             row_cols[2].write(row.get('file_name', ''))
@@ -79,4 +92,10 @@ with st.container(border=True):
             uploaded_at = row.get('uploaded_at')
             row_cols[4].write(uploaded_at.strftime('%Y-%m-%d %H:%M:%S') if pd.notna(uploaded_at) else "N/A")
             row_cols[5].write(f"{row['val_score']}%" if pd.notna(row.get('val_score')) else "N/A")
-            row_cols[6].write(row.get('val_status', ''))
+            val_status = row.get('val_status', '')
+            if val_status == 'Valid':
+                row_cols[6].markdown(f":green-background[✅ Valid]")
+            elif val_status == 'Invalid':
+                row_cols[6].markdown(f":red-background[❌ Invalid]")
+            else:
+                row_cols[6].write(val_status)
