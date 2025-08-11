@@ -20,9 +20,9 @@ with st.sidebar:
     if st.button("Upload File Kembali", use_container_width=True, type="secondary", icon=":material/upload:"):
         st.session_state.data_sent = False
         st.switch_page("pages/retur.py")
-    if st.button("Lihat Dashboard", use_container_width=True, type="secondary", icon=":material/dataset:"):
-        st.session_state.data_sent = True
-        st.switch_page("pages/dashboard.py")
+    # if st.button("Lihat Dashboard", use_container_width=True, type="secondary", icon=":material/dataset:"):
+    #     st.session_state.data_sent = True
+    #     st.switch_page("pages/dashboard.py")
     st.divider()
     st.header("Controls")
     if st.button("Logout", use_container_width=True, type="primary"):
