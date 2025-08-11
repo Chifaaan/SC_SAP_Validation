@@ -67,7 +67,13 @@ df['date'] = pd.to_datetime(df['date'])
 if df is None:
     st.stop()
 
+if role == "Admin":
+    role_to_process = st.session_state.get('role_to_process')
+else:
+    role_to_process = role
 
+st.markdown(role)
+st.markdown(role_to_process)
 
 # --- Main Dashboad ---
 st.title("📊 Validation Dashboard")
@@ -138,7 +144,7 @@ with tab2:
     st.info(f"**{discrepancy_total}** data yang tidak sesuai dari **{len(df)}** data berdasarkan perhitungan kolom 'dpp'.")
 
     # Define and display the main results table
-    id_col = 'transaction_code' if role == 'Supply Chain' else 'document_id'
+    id_col = 'transaction_code' if role_to_process == 'Supply Chain' else 'document_id'
     display_order = [id_col, 'outlet_code', 'date', 'target_col_value', 'validation_total', 'difference', 'status', 'Discrepancy_category']
 
     st.dataframe(filtered_df[display_order], use_container_width=True, column_config={
@@ -169,7 +175,7 @@ with tab2:
         if not discrepancy_records.empty:
 
             # Aggregate the 'total' column from the raw validation file
-            if role == 'Supply Chain':
+            if role_to_process == 'Supply Chain':
                 val_total_agg = val_df.groupby('no_transaksi')['total'].sum().reset_index()
                 recalc_df = pd.merge(discrepancy_records, val_total_agg, left_on='transaction_code', right_on='no_transaksi', how='left')
             else:  # Accountant role
@@ -183,7 +189,7 @@ with tab2:
             recalc_df['status'] = recalc_df['recalculated_difference'].apply(lambda x: 'Discrepancy' if x >= 10 else 'Matched')
 
             # Define display columns
-            id_col = 'transaction_code' if role == 'Supply Chain' else 'document_id'
+            id_col = 'transaction_code' if role_to_process == 'Supply Chain' else 'document_id'
             recalc_display_order = [id_col, 'outlet_code', 'date', 'target_col_value', 'total', 'recalculated_difference', 'status']
 
             # --- FILTERS ---
@@ -270,7 +276,7 @@ with tab2:
 
     if drill_down_id:
         drill_col1, drill_col2 = st.columns(2)
-        if role == 'Supply Chain' and sc_df is not None:
+        if role_to_process == 'Supply Chain' and sc_df is not None:
             with drill_col1:
                 st.subheader(f"Source Data (SC)")
                 source_drill = sc_df[sc_df['no_penerimaan'].astype(str) == drill_down_id]
@@ -289,7 +295,7 @@ with tab2:
                 st.write(f"Sum kolom :red[total] dari data Validation: :red-background[**{sum_val_tot:,}**]")
                 st.write(f"Sum kolom :blue[dpp] dari data Validation: :blue-background[**{sum_val_dpp:,}**]")
                 st.dataframe(val_drill)
-        elif role == 'Accountant' and sap_df is not None:
+        elif role_to_process == 'Accountant' and sap_df is not None:
             with drill_col1:
                 st.subheader(f"Source Data (SAP)")
                 source_drill = sap_df[sap_df['doc_id'].astype(str) == drill_down_id]

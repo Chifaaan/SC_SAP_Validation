@@ -100,15 +100,19 @@ with col2:
     if role == "Supply Chain":
         with st.container(border=True):
             st.markdown("Dokumen yang dapat anda validasi:")
-            st.markdown("- **Dokumen Reguler Penjualan**")
-            st.markdown("- **Dokumen Retur Penjualan**")
+            st.markdown("- **Dokumen Reguler Pembelian**")
+            st.markdown("- **Dokumen Retur Pembelian**")
     elif role == "Accountant":
         with st.container(border=True):
             st.markdown("Dokumen yang dapat anda validasi:")
-            st.markdown("- **Dokumen Reguler Penjualan**")
-            st.markdown("- **Dokumen Retur Penjualan**")
-
-
+            st.markdown("- **Dokumen Reguler Pembelian**")
+            st.markdown("- **Dokumen Retur Pembelian**")
+    
+    elif role == "Admin":
+        with st.container(border=True):
+            st.markdown("Dokumen yang dapat anda validasi:")
+            st.markdown("- **Dokumen Reguler Pembelian**")
+            st.markdown("- **Dokumen Retur Pembelian**")
 
 # --- Load Validation File ---
 try:
@@ -118,7 +122,9 @@ except FileNotFoundError:
     st.error("Validation file not found: `im_purchases_and_return.csv` must be in the root directory."); st.stop()
 
 # --- File Upload Section ---
-file_type = st.radio("Select Document Type", ["Reguler", "Retur"], key="file_type_selector", horizontal=True)
+radio_cols = st.columns(2)
+with radio_cols[0]:
+    file_type = st.radio("Select Document Type", ["Reguler", "Retur"], key="file_type_selector", horizontal=True)
 st.header("Upload Your Document")
 data_file = None
 if role == "Supply Chain": 
@@ -128,6 +134,22 @@ if role == "Supply Chain":
 elif role == "Accountant": 
     st.markdown("**Note:** Pastikan kolom berikut tersedia: `profit_center`, `doc_id`, `posting_date`, dan `kredit`.")
     data_file = st.file_uploader("Upload your Accountant (SAP) file", type=['csv', 'xlsx'])
+
+elif role == "Admin":
+    with radio_cols[1]:
+        doc_role = st.radio("Pilih jenis dokumen yang akan divalidasi:", ["Supply Chain", "Accountant"], horizontal=True)
+    
+    if doc_role == "Supply Chain":
+        st.markdown("**Note:** Pastikan kolom berikut tersedia: `kode_outlet`, `no_penerimaan`, `tgl_penerimaan`, dan `jml_neto`.")
+        data_file = st.file_uploader("Upload Supply Chain (SC) file", type=['csv', 'xlsx'])
+        role_to_process = "Supply Chain"
+    
+    elif doc_role == "Accountant":
+        st.markdown("**Note:** Pastikan kolom berikut tersedia: `profit_center`, `doc_id`, `posting_date`, dan `kredit`.")
+        data_file = st.file_uploader("Upload Accountant (SAP) file", type=['csv', 'xlsx'])
+        role_to_process = "Accountant"
+else:
+    role_to_process = role
 
 if data_file and VAL_FILE_LOADED:
     data_df = load_dataframe(data_file)
@@ -177,6 +199,37 @@ if data_file and VAL_FILE_LOADED:
                 })
                 source_agg['target_col_value'] = abs(source_agg['target_col_value'])
                 id_col, val_id_col = 'document_id', 'document_id'
+        
+        elif role_to_process == "Supply Chain":
+            st.markdown("File yang diupload:")
+            st.dataframe(data_df.head())
+            sc_required = {"kode_outlet": "Outlet Code", "no_penerimaan": "Nomor Penerimaan", "tgl_penerimaan": "Tanggal Penerimaan", "jml_neto": "Jumlah Neto"}
+            sc_df_mapped = map_columns(data_df, sc_required, "SC")
+            if sc_df_mapped is not None:
+                sc_df_mapped['jml_neto'] = pd.to_numeric(sc_df_mapped['jml_neto'], errors='coerce').fillna(0)
+                sc_df_mapped['tgl_penerimaan'] = pd.to_datetime(sc_df_mapped['tgl_penerimaan'], errors='coerce')
+                source_agg = sc_df_mapped.groupby('no_penerimaan').agg(
+                    target_col_value=('jml_neto', 'sum'),
+                    outlet_code=('kode_outlet', 'first'),
+                    date=('tgl_penerimaan', 'first')
+                ).reset_index().rename(columns={'no_penerimaan': 'transaction_code'})
+                id_col, val_id_col = 'transaction_code', 'no_transaksi'
+
+        elif role_to_process == "Accountant":
+            st.markdown("File yang diupload:")
+            st.dataframe(data_df.head())
+            sap_required = {"profit_center": "Profit Center", "doc_id": "Document ID", "posting_date": "Posting Date", "kredit": "Credit Amount"}
+            sap_df_mapped = map_columns(data_df, sap_required, "SAP")
+            if sap_df_mapped is not None:
+                sap_df_mapped['kredit'] = pd.to_numeric(sap_df_mapped['kredit'], errors='coerce').fillna(0)
+                sap_df_mapped['posting_date'] = pd.to_datetime(sap_df_mapped['posting_date'], errors='coerce')
+                source_agg = sap_df_mapped.rename(columns={
+                    'doc_id': 'document_id', 'profit_center': 'outlet_code',
+                    'posting_date': 'date', 'kredit': 'target_col_value'
+                })
+                source_agg['target_col_value'] = abs(source_agg['target_col_value'])
+                id_col, val_id_col = 'document_id', 'document_id'
+
 
         if 'source_agg' in locals():
             val_agg_dpp = val_df.groupby(val_id_col)['dpp'].sum().reset_index()
@@ -205,7 +258,12 @@ if data_file and VAL_FILE_LOADED:
     if result_df is not None:
         st.session_state['result_df'] = result_df
         st.session_state['val_df'] = val_df_raw
-        st.session_state['role'] = role
+    
+        if role == "Admin":
+            st.session_state['role_to_process'] = role_to_process
+        else:
+            st.session_state['role'] = role
+        
         st.session_state['sc_df'] = sc_df_mapped
         st.session_state['sap_df'] = sap_df_mapped
         st.session_state['file_type'] = file_type
@@ -214,7 +272,7 @@ if data_file and VAL_FILE_LOADED:
         if st.button("View Results", use_container_width=True, type="primary"):
             # --- Insert Result into MinIO ---
             unique_id = str(uuid.uuid4())
-            minio_path = f"{st.session_state['user']}/{unique_id}.csv"
+            minio_path = f"{unique_id}.csv"
             minio_client.put_object(
                 os.getenv("BUCKET_NAME"),
                 minio_path,
