@@ -30,6 +30,19 @@ services:
       - postgres
     volumes:
       - n8n_data:/home/node/.n8n
+  
+  minio:
+    image: minio/minio:latest
+    container_name: sl_minio
+    restart: always
+    ports:
+      - "9203:9000"
+      - "9204:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    volumes:
+      - minio_data:/data
 
 volumes:
   postgres_data:
