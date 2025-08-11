@@ -72,9 +72,6 @@ if role == "Admin":
 else:
     role_to_process = role
 
-st.markdown(role)
-st.markdown(role_to_process)
-
 # --- Main Dashboad ---
 st.title("📊 Validation Dashboard")
 
