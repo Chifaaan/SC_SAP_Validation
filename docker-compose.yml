@@ -8,7 +8,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: master
-      POSTGRES_DB: postgresdb
+      POSTGRES_DB: postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -19,12 +19,6 @@ services:
     ports:
       - "9202:5678"
     environment:
-      DB_TYPE: postgres
-      DB_POSTGRESDB_HOST: postgres
-      DB_POSTGRESDB_PORT: 5432
-      DB_POSTGRESDB_DATABASE: postgresdb
-      DB_POSTGRESDB_USER: postgres
-      DB_POSTGRESDB_PASSWORD: master
       N8N_BASIC_AUTH_ACTIVE: true
       N8N_BASIC_AUTH_USER: chi@gmail.com
       N8N_BASIC_AUTH_PASSWORD: Admin12345

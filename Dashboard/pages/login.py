@@ -46,6 +46,17 @@ with st.form("login_form"):
     password = st.text_input("Password", type="password")
     submitted = st.form_submit_button("Login", type="secondary")
 
+# --- Login Creds ---
+col1, col2 = st.columns(2)
+with col1:
+    st.subheader("Role Supply Chain")
+    st.warning("Username: `sc_user`")
+    st.warning("Password: `user123`")
+with col2:
+    st.subheader("Role Accountant")
+    st.warning("Username: `acc_user`")
+    st.warning("Password: `user123`")
+
 if submitted:
     if not username or not password:
         st.warning("Please enter both username and password.")
@@ -72,3 +83,5 @@ if submitted:
                 else:
                     # Show error message from API if login fails
                     st.error(message or "Invalid username or password.")
+
+        

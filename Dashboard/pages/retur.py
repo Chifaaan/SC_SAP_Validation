@@ -2,6 +2,21 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import time
+import os
+from minio import Minio
+from io import BytesIO
+from dotenv import load_dotenv
+
+
+
+# -- Set Connection to MinIO --
+load_dotenv()
+minio_client = Minio(
+    os.getenv("MINIO_ENDPOINT"),
+    access_key=os.getenv("MINIO_ACCESS_KEY"),
+    secret_key=os.getenv("MINIO_SECRET_KEY"),
+    secure=False
+)
 
 # --- Page Configuration and Authentication ---
 st.set_page_config(page_title="Document Validation", layout="centered", initial_sidebar_state="expanded")
@@ -68,6 +83,7 @@ login_time = st.session_state['login_time']
 
 role = st.session_state.get('role')
 user = st.session_state.get('user')
+st.session_state.data_sent = False
 st.title(f"📄 Document Validation Portal")
 
 col1, col2 = st.columns(2)
@@ -184,7 +200,7 @@ if data_file and VAL_FILE_LOADED:
             final_cols = [id_col, 'outlet_code', 'date', 'target_col_value', 'validation_total', 'difference', 'status']
             result_df = result_df[final_cols]
 
-            
+    
     if result_df is not None:
         st.session_state['result_df'] = result_df
         st.session_state['val_df'] = val_df_raw
@@ -192,6 +208,17 @@ if data_file and VAL_FILE_LOADED:
         st.session_state['sc_df'] = sc_df_mapped
         st.session_state['sap_df'] = sap_df_mapped
         st.session_state['file_type'] = file_type
+        
         st.success("Kolom sudah sesuai! Hasil sudah siap.")
         if st.button("View Results", use_container_width=True, type="primary"):
+            # --- Insert Result into MinIO ---
+            minio_path = f"validated/{st.session_state['user']}/{time.strftime('%Y%m%d_%H%M%S')}.csv"
+            minio_client.put_object(
+                os.getenv("BUCKET_NAME"),
+                minio_path,
+                BytesIO(result_df.to_csv(index=False).encode('utf-8')),
+                len(result_df.to_csv(index=False).encode('utf-8')),
+                content_type="application/csv"
+            )
+            st.session_state['minio_path'] = minio_path
             st.switch_page("pages/dashboard.py")

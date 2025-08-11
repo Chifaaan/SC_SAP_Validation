@@ -1,16 +1,46 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from streamlit_extras.metric_cards import style_metric_cards
 import requests
+from minio import Minio
+from dotenv import load_dotenv
+import os
+import io
 
 st.set_page_config(page_title="Validation Dashboard", layout="wide")
+
+# -- Set Connection to MinIO --
+load_dotenv()
+minio_client = Minio(
+    os.getenv("MINIO_ENDPOINT"),
+    access_key=os.getenv("MINIO_ACCESS_KEY"),
+    secret_key=os.getenv("MINIO_SECRET_KEY"),
+    secure=False
+)
 
 # --- Authentication and Session State Check ---
 if not st.session_state.get('logged_in'):
     st.error("Access denied. Please log in first.")
     st.switch_page("pages/login.py")
     st.stop()
+
+def load_file_from_minio(file_name: str) -> pd.DataFrame:
+    """
+    Download file dari MinIO dan baca menjadi DataFrame
+    """
+    try:
+        BUCKET_NAME = os.getenv("BUCKET_NAME")
+        obj = minio_client.get_object(BUCKET_NAME, file_name)
+        data = obj.read()
+        obj.close()
+        # obj.release()
+
+        # Pastikan format sesuai (contoh: CSV)
+        df = pd.read_csv(io.BytesIO(data))
+        return df
+    except Exception as e:
+        st.error(f"Gagal mengambil file dari MinIO: {e}")
+        return None
 
 # Check for all required dataframes
 required_keys = ['result_df', 'val_df', 'role']
@@ -28,8 +58,16 @@ user = st.session_state.get('user')
 role = st.session_state.get('role')
 sc_df = st.session_state.get('sc_df')
 sap_df = st.session_state.get('sap_df')
+minio_load = st.session_state.get('minio_path')
 
+
+# Ambil file dari MinIO
+df = load_file_from_minio(minio_load)
 df['date'] = pd.to_datetime(df['date'])
+if df is None:
+    st.stop()
+
+
 
 # --- Main Dashboad ---
 st.title("📊 Validation Dashboard")
@@ -41,7 +79,6 @@ with st.sidebar:
     st.divider()
     st.header("Navigation")
     if st.button("Upload File Kembali", use_container_width=True, type="secondary", icon=":material/upload:"):
-        st.session_state.data_sent = False
         st.switch_page("pages/retur.py")
     if st.button("Lihat Log Proses", use_container_width=True, type="secondary", icon=":material/history:"):
         st.switch_page("pages/process.py")
