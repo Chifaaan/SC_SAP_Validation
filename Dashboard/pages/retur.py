@@ -6,6 +6,7 @@ import os
 from minio import Minio
 from io import BytesIO
 from dotenv import load_dotenv
+import uuid
 
 
 
@@ -212,7 +213,8 @@ if data_file and VAL_FILE_LOADED:
         st.success("Kolom sudah sesuai! Hasil sudah siap.")
         if st.button("View Results", use_container_width=True, type="primary"):
             # --- Insert Result into MinIO ---
-            minio_path = f"validated/{st.session_state['user']}/{time.strftime('%Y%m%d_%H%M%S')}.csv"
+            unique_id = str(uuid.uuid4())
+            minio_path = f"{st.session_state['user']}/{unique_id}.csv"
             minio_client.put_object(
                 os.getenv("BUCKET_NAME"),
                 minio_path,

@@ -50,6 +50,9 @@ try:
         if process_data:
             df = pd.DataFrame(process_data)
             df['uploaded_at'] = pd.to_datetime(df['uploaded_at'], errors='coerce') if 'uploaded_at' in df.columns else pd.Timestamp.now()
+            # 🔹 Filter berdasarkan role
+            if role != "Admin":  
+                df = df[df['role'] == role]
     else:
         st.warning(f"Gagal mengambil data. Status code: {response.status_code}")
 except Exception as e:
@@ -69,7 +72,7 @@ with col3:
 
 # --- Table Header ---
 with st.container(border=True):
-    header_cols = st.columns([2, 2, 2, 2, 2, 2, 2.2])
+    header_cols = st.columns([1.5, 1.5, 2, 1.5, 2, 2, 2.2, 1.5])
     header_cols[0].markdown("**👤 User**")
     header_cols[1].markdown("**🧾 File Type**")
     header_cols[2].markdown("**🔰 File Name**")
@@ -77,25 +80,43 @@ with st.container(border=True):
     header_cols[4].markdown("**📅 Upload Time**")
     header_cols[5].markdown("**📊 Validation Score**")
     header_cols[6].markdown("**✅ Validation Status**")
+    header_cols[7].markdown("**🔍 Action**")
     add_vertical_space(1)
 
+    # Tambahkan CSS supaya tombol Detail sejajar ke atas
+    st.markdown("""
+        <style>
+        div[data-testid="stButton"] > button {
+            padding-top: 0.25rem;
+            padding-bottom: 0.25rem;
+            margin-top: -6px; /* geser tombol ke atas */
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     # --- Table Rows ---
-    if df.empty:
-        st.markdown("<p style='text-align:center; color:gray;'>📭 Process Kosong</p>", unsafe_allow_html=True)
-    else:
-        for i, row in df.iterrows():
-            row_cols = st.columns([2, 2, 2, 2, 2, 2,2.2 ])
-            row_cols[0].write(row.get('user', ''))
-            row_cols[1].write(row.get('file_type', ''))
-            row_cols[2].write(row.get('file_name', ''))
-            row_cols[3].write(row.get('role', ''))
-            uploaded_at = row.get('uploaded_at')
-            row_cols[4].write(uploaded_at.strftime('%Y-%m-%d %H:%M:%S') if pd.notna(uploaded_at) else "N/A")
-            row_cols[5].write(f"{row['val_score']}%" if pd.notna(row.get('val_score')) else "N/A")
-            val_status = row.get('val_status', '')
-            if val_status == 'Valid':
-                row_cols[6].markdown(f":green-background[✅ Valid]")
-            elif val_status == 'Invalid':
-                row_cols[6].markdown(f":red-background[❌ Invalid]")
-            else:
-                row_cols[6].write(val_status)
+    for i, row in df.iterrows():
+        row_cols = st.columns([1.5, 1.5, 2, 1.5, 2, 2, 2.2, 1.5])
+        st.markdown(" ")
+        row_cols[0].write(row.get('user', ''))
+        row_cols[1].write(row.get('file_type', ''))
+        row_cols[2].write(row.get('file_name', ''))
+        row_cols[3].write(row.get('role', ''))
+
+        uploaded_at = row.get('uploaded_at')
+        row_cols[4].write(uploaded_at.strftime('%Y-%m-%d %H:%M:%S') if pd.notna(uploaded_at) else "N/A")
+
+        row_cols[5].write(f"{row['val_score']}%" if pd.notna(row.get('val_score')) else "N/A")
+
+        val_status = row.get('val_status', '')
+        if val_status == 'Valid':
+            row_cols[6].markdown(f":green-background[✅ Valid]")
+        elif val_status == 'Invalid':
+            row_cols[6].markdown(f":red-background[❌ Invalid]")
+        else:
+            row_cols[6].write(val_status)
+
+        # Tombol Detail
+        if row_cols[7].button("Detail", key=f"detail_{i}"):
+            st.session_state['minio_path'] = row.get('id', '')
+            st.switch_page("pages/dashboard.py")

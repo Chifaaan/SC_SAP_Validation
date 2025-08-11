@@ -426,6 +426,7 @@ if not st.session_state.data_sent:
 
     # --- Send Data to API ---
     payload = {
+        "id": minio_load,
         "user": user,
         "role": role,
         "file_type": file_type,
