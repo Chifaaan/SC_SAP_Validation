@@ -26,7 +26,7 @@ if not st.session_state.get('logged_in'):
 
 def load_file_from_minio(file_name: str) -> pd.DataFrame:
     """
-    Download file dari MinIO dan baca menjadi DataFrame
+    Load file dari MinIO dan baca menjadi DataFrame
     """
     try:
         BUCKET_NAME = os.getenv("BUCKET_NAME")
@@ -43,26 +43,31 @@ def load_file_from_minio(file_name: str) -> pd.DataFrame:
         return None
 
 # Check for all required dataframes
-required_keys = ['result_df', 'val_df', 'role']
-if not all(key in st.session_state for key in required_keys):
-    st.warning("Kamu belum pernah melakukan vaidasi dokumen. Silahkan upload file terlebih dahulu.")
-    link1,link2 = st.columns([1, 5])
-    link1.page_link("pages/retur.py", label="Go to Validation Page", icon="📄")
-    link2.page_link("pages/process.py", label="Go to Process Log", icon="📜")
-    st.stop()
+# required_keys = ['result_df', 'val_df', 'role']
+# if not all(key in st.session_state for key in required_keys):
+#     st.warning("Kamu belum pernah melakukan vaidasi dokumen. Silahkan upload file terlebih dahulu.")
+#     link1,link2 = st.columns([1, 5])
+#     link1.page_link("pages/retur.py", label="Go to Validation Page", icon="📄")
+#     link2.page_link("pages/process.py", label="Go to Process Log", icon="📜")
+#     st.stop()
 
 # --- Load Data From Session ---
-df = st.session_state['result_df']
-val_df = st.session_state['val_df']
+
+val_df = pd.read_csv('./im_purchases_and_return.csv')
 user = st.session_state.get('user')
 role = st.session_state.get('role')
 sc_df = st.session_state.get('sc_df')
 sap_df = st.session_state.get('sap_df')
 minio_load = st.session_state.get('minio_path')
 
+if 'result_df' not in st.session_state or st.session_state['result_df'] is None:
+    df = load_file_from_minio(minio_load)
+else:
+    df = st.session_state['result_df']
+
 
 # Ambil file dari MinIO
-df = load_file_from_minio(minio_load)
+
 df['date'] = pd.to_datetime(df['date'])
 if df is None:
     st.stop()
@@ -97,7 +102,7 @@ with st.sidebar:
 # --- Create Tabs ---
 tab1, tab2 = st.tabs(["Validation Summary", "Dashboard Insights"])
 
-# --- Tab 1: Filterable Results Table ---
+# --- Tab 2: Filterable Results Table ---
 with tab2:
     head1, head2 = st.columns([3, 1])
     head1.header("Validasi dengan kolom 'dpp'")
@@ -309,7 +314,7 @@ with tab2:
                 st.write(f"Sum kolom :blue[dpp] dari data Validation: :blue-background[**{sum_val_dpp:,}**]")
                 st.dataframe(val_drill)
 
-# --- Tab 2: Dashboard Insights ---
+# --- Tab 1: Dashboard Insights ---
 with tab1:
     st.header("File Validation Summary")
     total_count = len(df)
@@ -370,58 +375,77 @@ with tab1:
 
 
 
+    # --- Discrepancy Category Insights ---
+    section = st.selectbox("Select Section", options=["Insights", "Discrepancy Category"], index=0)
+    if section == "Discrepancy Category":
+        if discrepancy_insights_df.empty:
+            st.success("🎉 No discrepancies found in the entire dataset!")
+        else:
+            category_counts = discrepancy_insights_df['Discrepancy_category'].value_counts().reset_index()
+            category_counts = category_counts[category_counts['Discrepancy_category'] != 'Valid']
 
+            st.subheader("📌 Jumlah per Kategori Discrepancy")
+            metric_cols = st.columns(len(category_counts))
 
+            # --- Jumlah Discrepancy per Kategori ---
+            all_categories = ["Rounding (< 2k)", "Small (2k-10k)", "Medium (10k-100k)", "Big (> 100k)", "Missing"]
+            category_dict = dict(zip(category_counts['Discrepancy_category'], category_counts['count']))
+            metric_cols = st.columns(len(all_categories))
+            for i, cat in enumerate(all_categories):
+                count = int(category_dict.get(cat, 0))
+                metric_cols[i].metric(label=cat, value=count, border=True)
+            st.markdown(" ")
 
+            # --- Visualisasi Kategori Discrepancy ---
+            col1, col2 = st.columns(2)
+            with col1:
+                with st.container(border=True):
+                    fig = px.pie(category_counts, names='Discrepancy_category', values='count', title='Distribusi Kategori Discrepancy')
+                    st.plotly_chart(fig, use_container_width=True)
+            with col2:
+                with st.container(border=True):
+                    fig_bar = px.bar(
+                    category_counts,
+                    x='Discrepancy_category',
+                    y='count',
+                    text='count',
+                    title="Discrepancy Category Count",
+                    labels={'Discrepancy_category': 'Category', 'count': 'Jumlah'},
+                    )
+                    fig_bar.update_traces(textposition='outside')
+                    fig_bar.update_layout(
+                        xaxis_title="Discrepancy Category",
+                        yaxis_title="Jumlah",
+                        uniformtext_minsize=8,
+                        uniformtext_mode='hide',
+                    )
+                    st.plotly_chart(fig_bar, use_container_width=True)
+    
+    if section == "Insights":
+        df['month'] = df['date'].dt.to_period('M')
+        monthly_report = (df.groupby('month')
+                          .agg({
+                              'target_col_value': 'sum',
+                              'validation_total': 'sum'
+                          }).reset_index())
+        monthly_report['selisih'] = monthly_report['target_col_value'] - monthly_report['validation_total']
+        st.dataframe(monthly_report)
 
+        outlet_prob = discrepancy_insights_df['outlet_code'].value_counts().idxmax()
+        top_outlet_count = discrepancy_insights_df['outlet_code'].value_counts().max()
+        all_target = df['target_col_value'].sum()
+        all_val = df['validation_total'].sum()
+        selisih_all = abs(all_target - all_val)
+        st.subheader("📊 Insights")
+        st.metric("Highest Outlet Discrepancy", f"{outlet_prob}",  border=True, delta=f"{top_outlet_count} records",)
+        st.metric("Sum Target Column", f"{all_target:,.0f}", border=True)
+        st.metric("Sum Validation Total", f"{all_val:,.0f}", border=True)
+        st.metric("Total Difference", f"{selisih_all:,.0f}", border=True)
+        st.dataframe(sap_df)
 
-
-
-    if discrepancy_insights_df.empty:
-        st.success("🎉 No discrepancies found in the entire dataset!")
-    else:
-        category_counts = discrepancy_insights_df['Discrepancy_category'].value_counts().reset_index()
-        category_counts = category_counts[category_counts['Discrepancy_category'] != 'Valid']
-
-        st.subheader("📌 Jumlah per Kategori Discrepancy")
-        metric_cols = st.columns(len(category_counts))
-
-        # --- Jumlah Discrepancy per Kategori ---
-        all_categories = ["Rounding (< 2k)", "Small (2k-10k)", "Medium (10k-100k)", "Big (> 100k)", "Missing"]
-        category_dict = dict(zip(category_counts['Discrepancy_category'], category_counts['count']))
-        metric_cols = st.columns(len(all_categories))
-        for i, cat in enumerate(all_categories):
-            count = int(category_dict.get(cat, 0))
-            metric_cols[i].metric(label=cat, value=count, border=True)
-        st.markdown(" ")
-
-        # --- Visualisasi Kategori Discrepancy ---
-        col1, col2 = st.columns(2)
-        with col1:
-            with st.container(border=True):
-                fig = px.pie(category_counts, names='Discrepancy_category', values='count', title='Distribusi Kategori Discrepancy')
-                st.plotly_chart(fig, use_container_width=True)
-        with col2:
-            with st.container(border=True):
-                fig_bar = px.bar(
-                category_counts,
-                x='Discrepancy_category',
-                y='count',
-                text='count',
-                title="Discrepancy Category Count",
-                labels={'Discrepancy_category': 'Category', 'count': 'Jumlah'},
-                )
-                fig_bar.update_traces(textposition='outside')
-                fig_bar.update_layout(
-                    xaxis_title="Discrepancy Category",
-                    yaxis_title="Jumlah",
-                    uniformtext_minsize=8,
-                    uniformtext_mode='hide',
-                )
-                st.plotly_chart(fig_bar, use_container_width=True)
 # Cek apakah data sudah pernah dikirim
 if "data_sent" not in st.session_state:
-    st.session_state.data_sent = False
+    st.session_state.data_sent = True
 
 if not st.session_state.data_sent:
     file_type = st.session_state.get('file_type')
