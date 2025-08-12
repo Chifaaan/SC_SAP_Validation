@@ -119,4 +119,5 @@ with st.container(border=True):
         # Tombol Detail
         if row_cols[7].button("Detail", key=f"detail_{i}"):
             st.session_state['minio_path'] = row.get('id', '')
+            st.session_state['role_to_process'] = row.get('role_to_process', '')
             st.switch_page("pages/dashboard.py")

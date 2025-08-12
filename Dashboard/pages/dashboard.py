@@ -59,11 +59,8 @@ role = st.session_state.get('role')
 sc_df = st.session_state.get('sc_df')
 sap_df = st.session_state.get('sap_df')
 minio_load = st.session_state.get('minio_path')
+df = load_file_from_minio(minio_load)
 
-if 'result_df' not in st.session_state or st.session_state['result_df'] is None:
-    df = load_file_from_minio(minio_load)
-else:
-    df = st.session_state['result_df']
 
 
 # Ambil file dari MinIO
@@ -246,7 +243,7 @@ with tab2:
                 filtered_recalc_df = filtered_recalc_df[filtered_recalc_df['Discrepancy_category'].isin(selected_discrepancy)]
 
             # Display filtered table
-            total_discre = (filtered_recalc_df['status'] == 'Discrepancy').sum()
+            total_discre = (recalc_df['status'] == 'Discrepancy').sum()
             st.info(f"**{total_discre}** data tidak sesuai setelah menghitung ulang dengan kolom 'Total'.")
 
             st.dataframe(filtered_recalc_df[recalc_display_order + ['Discrepancy_category']].rename(columns={
@@ -294,6 +291,7 @@ with tab2:
                 # Bug Fix: Sum 'total' as it's the reliably available column
                 sum_val_tot = val_drill['total'].sum() if not val_drill.empty else 0
                 sum_val_dpp = val_drill['dpp'].sum() if 'dpp' in val_drill.columns else 0
+                sum_val_dpp = int(sum_val_dpp)
                 st.write(f"Sum kolom :red[total] dari data Validation: :red-background[**{sum_val_tot:,}**]")
                 st.write(f"Sum kolom :blue[dpp] dari data Validation: :blue-background[**{sum_val_dpp:,}**]")
                 st.dataframe(val_drill)
@@ -310,6 +308,7 @@ with tab2:
                 # Bug Fix: Sum 'total' as it's the reliably available column
                 sum_val_tot = val_drill['total'].sum() if not val_drill.empty else 0
                 sum_val_dpp = val_drill['dpp'].sum() if 'dpp' in val_drill.columns else 0
+                sum_val_dpp = int(sum_val_dpp)
                 st.write(f"Sum kolom :red[total] dari data Validation: :red-background[**{sum_val_tot:,}**]")
                 st.write(f"Sum kolom :blue[dpp] dari data Validation: :blue-background[**{sum_val_dpp:,}**]")
                 st.dataframe(val_drill)
@@ -373,75 +372,99 @@ with tab1:
 
     st.divider()
 
-
-
     # --- Discrepancy Category Insights ---
-    section = st.selectbox("Select Section", options=["Insights", "Discrepancy Category"], index=0)
-    if section == "Discrepancy Category":
-        if discrepancy_insights_df.empty:
-            st.success("🎉 No discrepancies found in the entire dataset!")
-        else:
-            category_counts = discrepancy_insights_df['Discrepancy_category'].value_counts().reset_index()
-            category_counts = category_counts[category_counts['Discrepancy_category'] != 'Valid']
+    if discrepancy_insights_df.empty:
+        st.success("🎉 No discrepancies found in the entire dataset!")
+    else:
+        section = st.selectbox("Select Section", options=["Insights", "Discrepancy Category"], index=0)
+        if section == "Discrepancy Category":
+                category_counts = discrepancy_insights_df['Discrepancy_category'].value_counts().reset_index()
+                category_counts = category_counts[category_counts['Discrepancy_category'] != 'Valid']
 
-            st.subheader("📌 Jumlah per Kategori Discrepancy")
-            metric_cols = st.columns(len(category_counts))
+                st.subheader("📌 Jumlah per Kategori Discrepancy")
+                metric_cols = st.columns(len(category_counts))
 
-            # --- Jumlah Discrepancy per Kategori ---
-            all_categories = ["Rounding (< 2k)", "Small (2k-10k)", "Medium (10k-100k)", "Big (> 100k)", "Missing"]
-            category_dict = dict(zip(category_counts['Discrepancy_category'], category_counts['count']))
-            metric_cols = st.columns(len(all_categories))
-            for i, cat in enumerate(all_categories):
-                count = int(category_dict.get(cat, 0))
-                metric_cols[i].metric(label=cat, value=count, border=True)
-            st.markdown(" ")
+                # --- Jumlah Discrepancy per Kategori ---
+                all_categories = ["Rounding (< 2k)", "Small (2k-10k)", "Medium (10k-100k)", "Big (> 100k)", "Missing"]
+                category_dict = dict(zip(category_counts['Discrepancy_category'], category_counts['count']))
+                metric_cols = st.columns(len(all_categories))
+                for i, cat in enumerate(all_categories):
+                    count = int(category_dict.get(cat, 0))
+                    metric_cols[i].metric(label=cat, value=count, border=True)
+                st.markdown(" ")
 
-            # --- Visualisasi Kategori Discrepancy ---
-            col1, col2 = st.columns(2)
-            with col1:
-                with st.container(border=True):
-                    fig = px.pie(category_counts, names='Discrepancy_category', values='count', title='Distribusi Kategori Discrepancy')
-                    st.plotly_chart(fig, use_container_width=True)
-            with col2:
-                with st.container(border=True):
-                    fig_bar = px.bar(
-                    category_counts,
-                    x='Discrepancy_category',
-                    y='count',
-                    text='count',
-                    title="Discrepancy Category Count",
-                    labels={'Discrepancy_category': 'Category', 'count': 'Jumlah'},
-                    )
-                    fig_bar.update_traces(textposition='outside')
-                    fig_bar.update_layout(
-                        xaxis_title="Discrepancy Category",
-                        yaxis_title="Jumlah",
-                        uniformtext_minsize=8,
-                        uniformtext_mode='hide',
-                    )
-                    st.plotly_chart(fig_bar, use_container_width=True)
+                # --- Visualisasi Kategori Discrepancy ---
+                col1, col2 = st.columns(2)
+                with col1:
+                    with st.container(border=True):
+                        fig = px.pie(category_counts, names='Discrepancy_category', values='count', title='Distribusi Kategori Discrepancy')
+                        st.plotly_chart(fig, use_container_width=True)
+                with col2:
+                    with st.container(border=True):
+                        fig_bar = px.bar(
+                        category_counts,
+                        x='Discrepancy_category',
+                        y='count',
+                        text='count',
+                        title="Discrepancy Category Count",
+                        labels={'Discrepancy_category': 'Category', 'count': 'Jumlah'},
+                        )
+                        fig_bar.update_traces(textposition='outside')
+                        fig_bar.update_layout(
+                            xaxis_title="Discrepancy Category",
+                            yaxis_title="Jumlah",
+                            uniformtext_minsize=8,
+                            uniformtext_mode='hide',
+                        )
+                        st.plotly_chart(fig_bar, use_container_width=True)
+        
+        if section == "Insights":
+            tabcol = st.columns(2)
+            with tabcol[0]:
+                df['month'] = df['date'].dt.to_period('M')
+                monthly_report = (df.groupby('month')
+                                .agg({
+                                    'target_col_value': 'sum',
+                                    'validation_total': 'sum'
+                                }).reset_index())
+                monthly_report['selisih'] = monthly_report['target_col_value'] - monthly_report['validation_total']
+                monthly_report['month'] = monthly_report['month'].dt.to_timestamp().dt.strftime('%B %Y')
+                # Buat row total
+                total_row = pd.DataFrame({
+                    'month': ['Total'],
+                    'target_col_value': [monthly_report['target_col_value'].sum()],
+                    'validation_total': [monthly_report['validation_total'].sum()],
+                    'selisih': [monthly_report['selisih'].sum()]
+                })
+
+                # Gabungkan
+                monthly_report = pd.concat([monthly_report, total_row], ignore_index=True)
+
+                # Styling baris terakhir
+                def highlight_last_row(row):
+                    if row.name == len(monthly_report) - 1:  # Baris terakhir
+                        return ['background-color: #040720; font-weight: bold'] * len(row)
+                    return [''] * len(row)
+
+                st.dataframe(monthly_report.style.apply(highlight_last_row, axis=1), hide_index=True, column_config={
+                'target_col_value': st.column_config.NumberColumn(format="localized"),
+                'validation_total': st.column_config.NumberColumn(format="localized"),
+                'selisih': st.column_config.NumberColumn(format="localized"),
+                })
+            
+            outlet_prob = discrepancy_insights_df['outlet_code'].value_counts().idxmax()
+            top_outlet_count = discrepancy_insights_df['outlet_code'].value_counts().max()
+            all_target = df['target_col_value'].sum()
+            all_val = df['validation_total'].sum()
+            selisih_all = abs(all_target - all_val)
+            with tabcol[1]:
+                st.metric("Highest Outlet Discrepancy", f"{outlet_prob}",  border=True, delta=f"{top_outlet_count} records",)
+                st.metric("Sum Target Column", f"{all_target:,.0f}", border=True)
+                st.metric("Sum Validation Total", f"{all_val:,.0f}", border=True)
+                st.metric("Total Difference", f"{selisih_all:,.0f}", border=True)
     
-    if section == "Insights":
-        df['month'] = df['date'].dt.to_period('M')
-        monthly_report = (df.groupby('month')
-                          .agg({
-                              'target_col_value': 'sum',
-                              'validation_total': 'sum'
-                          }).reset_index())
-        monthly_report['selisih'] = monthly_report['target_col_value'] - monthly_report['validation_total']
-        st.dataframe(monthly_report)
 
-        outlet_prob = discrepancy_insights_df['outlet_code'].value_counts().idxmax()
-        top_outlet_count = discrepancy_insights_df['outlet_code'].value_counts().max()
-        all_target = df['target_col_value'].sum()
-        all_val = df['validation_total'].sum()
-        selisih_all = abs(all_target - all_val)
-        st.subheader("📊 Insights")
-        st.metric("Highest Outlet Discrepancy", f"{outlet_prob}",  border=True, delta=f"{top_outlet_count} records",)
-        st.metric("Sum Target Column", f"{all_target:,.0f}", border=True)
-        st.metric("Sum Validation Total", f"{all_val:,.0f}", border=True)
-        st.metric("Total Difference", f"{selisih_all:,.0f}", border=True)
-        st.dataframe(sap_df)
+
 
 # Cek apakah data sudah pernah dikirim
 if "data_sent" not in st.session_state:
@@ -456,6 +479,7 @@ if not st.session_state.data_sent:
         "id": minio_load,
         "user": user,
         "role": role,
+        "role_to_process": role_to_process,
         "file_type": file_type,
         "val_status": val_status,
         "val_score": validation_pct,
