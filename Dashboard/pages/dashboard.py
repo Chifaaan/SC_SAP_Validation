@@ -59,9 +59,8 @@ role = st.session_state.get('role')
 sc_df = st.session_state.get('sc_df')
 sap_df = st.session_state.get('sap_df')
 minio_load = st.session_state.get('minio_path')
+file_name = st.session_state.get('file_name')
 df = load_file_from_minio(minio_load)
-
-
 
 # Ambil file dari MinIO
 
@@ -76,6 +75,8 @@ else:
 
 # --- Main Dashboad ---
 st.title("📊 Validation Dashboard")
+st.write(f":blue-background[{file_name}] :red-background[{role_to_process}]")
+
 
 # --- Sidebar Navigation ---
 with st.sidebar:
@@ -376,7 +377,9 @@ with tab1:
     if discrepancy_insights_df.empty:
         st.success("🎉 No discrepancies found in the entire dataset!")
     else:
+        # --- SELECT BOX UNTUK MEMILIH INSIGHT ---
         section = st.selectbox("Select Section", options=["Insights", "Discrepancy Category"], index=0)
+        # --- SELECT BOX JIKA DISCREPANCY CATEGORY ---
         if section == "Discrepancy Category":
                 category_counts = discrepancy_insights_df['Discrepancy_category'].value_counts().reset_index()
                 category_counts = category_counts[category_counts['Discrepancy_category'] != 'Valid']
@@ -418,6 +421,7 @@ with tab1:
                         )
                         st.plotly_chart(fig_bar, use_container_width=True)
         
+        # --- SELECT BOX JIKA INSIGHTS ---
         if section == "Insights":
             tabcol = st.columns(2)
             with tabcol[0]:
@@ -458,10 +462,13 @@ with tab1:
             all_val = df['validation_total'].sum()
             selisih_all = abs(all_target - all_val)
             with tabcol[1]:
-                st.metric("Highest Outlet Discrepancy", f"{outlet_prob}",  border=True, delta=f"{top_outlet_count} records",)
-                st.metric("Sum Target Column", f"{all_target:,.0f}", border=True)
-                st.metric("Sum Validation Total", f"{all_val:,.0f}", border=True)
-                st.metric("Total Difference", f"{selisih_all:,.0f}", border=True)
+                metcol = st.columns(2)
+                with metcol[0]:
+                    st.metric("Highest Outlet Discrepancy", f"{outlet_prob}",  border=True, delta=f"{top_outlet_count} records",)
+                    # st.metric("Sum Target Column", f"{all_target:,.0f}", border=True)
+                with metcol[1]:
+                    st.metric("Sum Validation Total", f"{all_val:,.0f}", border=True)
+                    st.metric("Total Difference", f"{selisih_all:,.0f}", border=True)
     
 
 
@@ -472,7 +479,7 @@ if "data_sent" not in st.session_state:
 
 if not st.session_state.data_sent:
     file_type = st.session_state.get('file_type')
-    file_name = st.session_state.get('uploaded_filename', 'Unknown File')
+    
 
     # --- Send Data to API ---
     payload = {

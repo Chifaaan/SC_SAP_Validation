@@ -120,4 +120,5 @@ with st.container(border=True):
         if row_cols[7].button("Detail", key=f"detail_{i}"):
             st.session_state['minio_path'] = row.get('id', '')
             st.session_state['role_to_process'] = row.get('role_to_process', '')
+            st.session_state['file_name'] = row.get('file_name', 'Unknown File')
             st.switch_page("pages/dashboard.py")

@@ -155,7 +155,7 @@ if data_file and VAL_FILE_LOADED:
     data_df = load_dataframe(data_file)
     # Simpan nama file ke dalam session_state
     if data_df is None: st.stop()
-    st.session_state['uploaded_filename'] = data_file.name
+    st.session_state['file_name'] = data_file.name
 
     # --- CORE LOGIC ---
     val_required_cols = {"kode_outlet": "Outlet", "document_id": "Doc ID", "no_transaksi": "Trans Num", "dpp": "DPP", "total": "Total"}
