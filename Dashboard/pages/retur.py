@@ -128,8 +128,11 @@ with radio_cols[0]:
     file_type = st.radio("Select Document Type", ["Reguler", "Retur"], key="file_type_selector", horizontal=True)
 st.header("Upload Your Document")
 data_file = None
-if role == "Supply Chain": 
-    st.markdown("**Note:** Pastikan kolom berikut tersedia: `kode_outlet`, `no_penerimaan`, `tgl_penerimaan`, dan `jml_neto`.")
+if role == "Supply Chain":
+    if file_type == "Retur":
+        st.markdown("**Note:** Pastikan kolom berikut tersedia: `kode_outlet`, `no_retur`, `tgl_penerimaan`, dan `jml_retur`.")
+    else:
+        st.markdown("**Note:** Pastikan kolom berikut tersedia: `kode_outlet`, `no_penerimaan`, `tgl_penerimaan`, dan `jml_neto`.")
     data_file = st.file_uploader("Upload your Supply Chain (SC) file", type=['csv', 'xlsx'])
 
 elif role == "Accountant": 
@@ -141,7 +144,10 @@ elif role == "Admin":
         doc_role = st.radio("Pilih jenis dokumen yang akan divalidasi:", ["Supply Chain", "Accountant"], horizontal=True)
     
     if doc_role == "Supply Chain":
-        st.markdown("**Note:** Pastikan kolom berikut tersedia: `kode_outlet`, `no_penerimaan`, `tgl_penerimaan`, dan `jml_neto`.")
+        if file_type == "Retur":
+            st.markdown("**Note:** Pastikan kolom berikut tersedia: `kode_outlet`, `no_retur`, `tgl_penerimaan`, dan `jml_retur`.")
+        else:
+            st.markdown("**Note:** Pastikan kolom berikut tersedia: `kode_outlet`, `no_penerimaan`, `tgl_penerimaan`, dan `jml_neto`.")
         data_file = st.file_uploader("Upload Supply Chain (SC) file", type=['csv', 'xlsx'])
         role_to_process = "Supply Chain"
     
