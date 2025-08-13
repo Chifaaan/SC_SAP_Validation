@@ -84,6 +84,7 @@ login_time = st.session_state['login_time']
 
 role = st.session_state.get('role')
 user = st.session_state.get('user')
+role_to_process = role
 st.session_state.data_sent = False
 st.title(f"📄 Document Validation Portal")
 
@@ -170,49 +171,39 @@ if data_file and VAL_FILE_LOADED:
 
     with st.spinner("Validating Column..."):
         time.sleep(0.5)
-        if role == "Supply Chain":
+        if role_to_process == "Supply Chain":
             st.markdown("File yang diupload:")
             st.dataframe(data_df.head())
-            sc_required = {"kode_outlet": "Outlet Code", "no_penerimaan": "Nomor Penerimaan", "tgl_penerimaan": "Tanggal Penerimaan", "jml_neto": "Jumlah Neto"}
+            
+            # Tentukan kolom berdasarkan pilihan file_type
+            if file_type == "Retur":
+                sc_required = {
+                    "kode_outlet": "Outlet Code",
+                    "no_retur": "Nomor Retur",
+                    "tgl_penerimaan": "Tanggal Penerimaan",
+                    "jml_neto": "Jumlah Neto"
+                }
+                group_col = "no_retur"
+            else:
+                sc_required = {
+                    "kode_outlet": "Outlet Code",
+                    "no_penerimaan": "Nomor Penerimaan",
+                    "tgl_penerimaan": "Tanggal Penerimaan",
+                    "jml_neto": "Jumlah Neto"
+                }
+                group_col = "no_penerimaan"
+
             sc_df_mapped = map_columns(data_df, sc_required, "SC")
             if sc_df_mapped is not None:
                 sc_df_mapped['jml_neto'] = pd.to_numeric(sc_df_mapped['jml_neto'], errors='coerce').fillna(0)
                 sc_df_mapped['tgl_penerimaan'] = pd.to_datetime(sc_df_mapped['tgl_penerimaan'], errors='coerce')
-                source_agg = sc_df_mapped.groupby('no_penerimaan').agg(
-                    target_col_value=('jml_neto', 'sum'),
-                    outlet_code=('kode_outlet', 'first'),
-                    date=('tgl_penerimaan', 'first')
-                ).reset_index().rename(columns={'no_penerimaan': 'transaction_code'})
-                id_col, val_id_col = 'transaction_code', 'no_transaksi'
                 
-        elif role == "Accountant":
-            st.markdown("File yang diupload:")
-            st.dataframe(data_df.head())
-            sap_required = {"profit_center": "Profit Center", "doc_id": "Document ID", "posting_date": "Posting Date", "kredit": "Credit Amount"}
-            sap_df_mapped = map_columns(data_df, sap_required, "SAP")
-            if sap_df_mapped is not None:
-                sap_df_mapped['kredit'] = pd.to_numeric(sap_df_mapped['kredit'], errors='coerce').fillna(0)
-                sap_df_mapped['posting_date'] = pd.to_datetime(sap_df_mapped['posting_date'], errors='coerce')
-                source_agg = sap_df_mapped.rename(columns={
-                    'doc_id': 'document_id', 'profit_center': 'outlet_code',
-                    'posting_date': 'date', 'kredit': 'target_col_value'
-                })
-                source_agg['target_col_value'] = abs(source_agg['target_col_value'])
-                id_col, val_id_col = 'document_id', 'document_id'
-        
-        elif role_to_process == "Supply Chain":
-            st.markdown("File yang diupload:")
-            st.dataframe(data_df.head())
-            sc_required = {"kode_outlet": "Outlet Code", "no_penerimaan": "Nomor Penerimaan", "tgl_penerimaan": "Tanggal Penerimaan", "jml_neto": "Jumlah Neto"}
-            sc_df_mapped = map_columns(data_df, sc_required, "SC")
-            if sc_df_mapped is not None:
-                sc_df_mapped['jml_neto'] = pd.to_numeric(sc_df_mapped['jml_neto'], errors='coerce').fillna(0)
-                sc_df_mapped['tgl_penerimaan'] = pd.to_datetime(sc_df_mapped['tgl_penerimaan'], errors='coerce')
-                source_agg = sc_df_mapped.groupby('no_penerimaan').agg(
+                source_agg = sc_df_mapped.groupby(group_col).agg(
                     target_col_value=('jml_neto', 'sum'),
                     outlet_code=('kode_outlet', 'first'),
                     date=('tgl_penerimaan', 'first')
-                ).reset_index().rename(columns={'no_penerimaan': 'transaction_code'})
+                ).reset_index().rename(columns={group_col: 'transaction_code'})
+                
                 id_col, val_id_col = 'transaction_code', 'no_transaksi'
 
         elif role_to_process == "Accountant":

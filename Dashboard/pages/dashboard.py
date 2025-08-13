@@ -120,10 +120,15 @@ with tab2:
     labels = ["Rounding (< 2k)", "Small (2k-10k)", "Medium (10k-100k)", "Big (> 100k)"]
     discrepancy_mask = df['status'] == 'Discrepancy'
     df['Discrepancy_category'] = pd.cut(abs(df.loc[discrepancy_mask, 'difference']), bins=bins, labels=labels, right=False)
+    
     if pd.api.types.is_categorical_dtype(df['Discrepancy_category']):
         df['Discrepancy_category'] = df['Discrepancy_category'].cat.add_categories('Valid').fillna('Valid')
     else:
         df['Discrepancy_category'] = df['Discrepancy_category'].fillna('Valid')
+    
+    # Update status jika kategori adalah Rounding (< 2k)
+    rounding_mask = df['Discrepancy_category'] == "Rounding (< 2k)"
+    df.loc[rounding_mask, 'status'] = "Matched"
         
     with filter_cols[3]:
         selected_discrepancy = st.multiselect("Discrepancy Category", options=sorted(df['Discrepancy_category'].unique()), default=[])
@@ -170,7 +175,7 @@ with tab2:
     body1.header("Perhitungan ulang dengan kolom 'Total'")
 
     if 'total' in val_df.columns:
-        discrepancy_records = filtered_df[filtered_df['status'] == 'Discrepancy'].copy()
+        discrepancy_records = df[df['status'] == 'Discrepancy'].copy()
 
         if not discrepancy_records.empty:
 
@@ -229,7 +234,7 @@ with tab2:
             recalc_df.loc[recalc_df.isnull().any(axis=1), 'Discrepancy_category'] = 'Missing'
 
             with filter_cols[3]:
-                selected_discrepancy = st.multiselect("Discrepancy Category", options=sorted(recalc_df['Discrepancy_category'].unique()), default=[])
+                selected_discrepancy = st.multiselect("Discrepancy Category", options=sorted(recalc_df['Discrepancy_category'].unique()), default=[], key="recalc_discrepancy_cat")
 
             # Apply filters
             filtered_recalc_df = recalc_df.copy()
@@ -388,29 +393,55 @@ with tab1:
                 metric_cols = st.columns(len(category_counts))
 
                 # --- Jumlah Discrepancy per Kategori ---
+                total_rounding_df = (df['Discrepancy_category'] == "Rounding (< 2k)").sum()
+                total_rounding_recalc = (recalc_df['Discrepancy_category'] == "Rounding (< 2k)").sum()
+                total_rounding_all = total_rounding_df + total_rounding_recalc
+
                 all_categories = ["Rounding (< 2k)", "Small (2k-10k)", "Medium (10k-100k)", "Big (> 100k)", "Missing"]
                 category_dict = dict(zip(category_counts['Discrepancy_category'], category_counts['count']))
                 metric_cols = st.columns(len(all_categories))
                 for i, cat in enumerate(all_categories):
-                    count = int(category_dict.get(cat, 0))
+                    if cat == "Rounding (< 2k)":
+                        count = total_rounding_all  # 🔹 pakai total gabungan
+                    else:
+                        count = int(category_dict.get(cat, 0))
                     metric_cols[i].metric(label=cat, value=count, border=True)
                 st.markdown(" ")
 
                 # --- Visualisasi Kategori Discrepancy ---
+                category_counts_updated = category_counts.copy()
+                if "Rounding (< 2k)" in category_counts_updated['Discrepancy_category'].values:
+                    category_counts_updated.loc[
+                        category_counts_updated['Discrepancy_category'] == "Rounding (< 2k)",
+                        'count'
+                    ] = total_rounding_all
+                else:
+                    # Jika tidak ada, tambahkan baris baru
+                    category_counts_updated = pd.concat([
+                        category_counts_updated,
+                        pd.DataFrame({'Discrepancy_category': ["Rounding (< 2k)"], 'count': [total_rounding_all]})
+                    ], ignore_index=True)
+            
                 col1, col2 = st.columns(2)
                 with col1:
                     with st.container(border=True):
-                        fig = px.pie(category_counts, names='Discrepancy_category', values='count', title='Distribusi Kategori Discrepancy')
+                        fig = px.pie(
+                            category_counts_updated,
+                            names='Discrepancy_category',
+                            values='count',
+                            title='Distribusi Kategori Discrepancy'
+                        )
                         st.plotly_chart(fig, use_container_width=True)
+
                 with col2:
                     with st.container(border=True):
                         fig_bar = px.bar(
-                        category_counts,
-                        x='Discrepancy_category',
-                        y='count',
-                        text='count',
-                        title="Discrepancy Category Count",
-                        labels={'Discrepancy_category': 'Category', 'count': 'Jumlah'},
+                            category_counts_updated,
+                            x='Discrepancy_category',
+                            y='count',
+                            text='count',
+                            title="Discrepancy Category Count",
+                            labels={'Discrepancy_category': 'Category', 'count': 'Jumlah'},
                         )
                         fig_bar.update_traces(textposition='outside')
                         fig_bar.update_layout(
@@ -461,14 +492,28 @@ with tab1:
             all_target = df['target_col_value'].sum()
             all_val = df['validation_total'].sum()
             selisih_all = abs(all_target - all_val)
+            
+            # --- Hitung Unique Code Berdasarkan Role ---
+            if role_to_process == "Supply Chain":
+                unique_id = df['transaction_code'].nunique()
+                unique_val = val_df['no_transaksi'].nunique()
+                unique_label = "Unique Kode Transaksi"
+            elif role_to_process == "Accountant":
+                unique_id = df['document_id'].nunique()
+                unique_val = val_df['document_id'].nunique()
+                unique_label = "Unique Document ID"
+
+            
             with tabcol[1]:
                 metcol = st.columns(2)
                 with metcol[0]:
-                    st.metric("Highest Outlet Discrepancy", f"{outlet_prob}",  border=True, delta=f"{top_outlet_count} records",)
+                    # st.metric("Highest Outlet Discrepancy", f"{outlet_prob}",  border=True, delta=f"{top_outlet_count} records",)
+                    st.metric(unique_label, f"{unique_id}", border=True)
                     # st.metric("Sum Target Column", f"{all_target:,.0f}", border=True)
                 with metcol[1]:
-                    st.metric("Sum Validation Total", f"{all_val:,.0f}", border=True)
-                    st.metric("Total Difference", f"{selisih_all:,.0f}", border=True)
+                    st.metric("Unique Validation", f"{unique_val}", border=True)
+                    # st.metric("Sum Validation Total", f"{all_val:,.0f}", border=True)
+                    # st.metric("Total Difference", f"{selisih_all:,.0f}", border=True)
     
 
 
